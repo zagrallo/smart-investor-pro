@@ -1,0 +1,122 @@
+from openai import AsyncOpenAI
+from config import settings
+from models import InvestmentMemo
+from data.json_parser import parse_with_recovery
+import json
+import logging
+from typing import Type, TypeVar
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+T = TypeVar("T", bound=BaseModel)
+
+MOCK_MEMO = json.dumps({
+    "company_name": "MockCorp AG",
+    "sector": "Technology - Enterprise SaaS",
+    "investment_thesis": "Scalable SaaS model with 25% YoY growth, strong DACH presence, and expanding ARR base.",
+    "financial_highlights": {
+        "revenue": "EUR 10M ARR",
+        "growth": "25% YoY",
+        "gross_margin": "78%",
+        "net_margin": "18%",
+        "debt_to_equity": 0.45
+    },
+    "market_opportunity": "EUR 2.5B TAM in DACH region; regulatory tailwinds from AI Act compliance demand.",
+    "competitive_advantages": [
+        "Proprietary AI engine with 3-year head start",
+        "High switching costs (avg. 18-month integration)",
+        "Certified under ISO 27001 and SOC 2 Type II"
+    ],
+    "key_risks": [
+        {
+            "category": "Regulatory",
+            "level": "MEDIUM",
+            "description": "EU AI Act compliance requirements pending final guidance.",
+            "mitigation": "Legal review initiated; budget allocated for Q3 compliance audit."
+        },
+        {
+            "category": "Market",
+            "level": "LOW",
+            "description": "Competitive pressure from US-based SaaS providers entering EU market.",
+            "mitigation": "Strengthen local partnerships and data-sovereignty positioning."
+        }
+    ],
+    "recommended_action": "BUY",
+    "confidence_score": 0.82
+})
+
+
+class LLMRouter:
+    def __init__(self):
+        self.client = AsyncOpenAI(
+            api_key=settings.LLM_API_KEY or settings.DEEPSEEK_API_KEY or "sk-mock-key",
+            base_url=settings.LLM_BASE_URL or settings.DEEPSEEK_BASE_URL
+        )
+        self.model = settings.LLM_MODEL or settings.DEEPSEEK_MODEL
+        self._is_mock = (settings.LLM_API_KEY or settings.DEEPSEEK_API_KEY) is None
+
+    async def analyze(self, prompt: str, system_prompt: str, response_format: Type[T] | None = None) -> dict:
+        if self._is_mock:
+            logger.warning("No DeepSeek API key configured. Returning structured mock response.")
+            return self._mock_result()
+        try:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+            kwargs = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": 0.3,
+                "max_tokens": 2000
+            }
+            if response_format:
+                kwargs["response_format"] = {"type": "json_object"}
+                schema_hint = (
+                    f"\n\nReturn ONLY valid JSON matching this schema:\n"
+                    f"{json.dumps(response_format.model_json_schema(), indent=2)}"
+                )
+                messages[-1]["content"] += schema_hint
+
+            response = await self.client.chat.completions.create(**kwargs)
+            content = response.choices[0].message.content
+            usage = response.usage
+            cost = (usage.prompt_tokens * 0.00014 + usage.completion_tokens * 0.00028) / 1000
+
+            parsed = None
+            if response_format:
+                parsed = parse_with_recovery(content, response_format)
+                if parsed is None:
+                    logger.error("All JSON parse strategies failed for response_format")
+                    parsed = response_format.model_validate({})
+
+            return {
+                "success": True,
+                "content": content,
+                "parsed": parsed,
+                "cost_usd": round(cost, 6),
+                "tokens": usage.total_tokens,
+                "model": self.model
+            }
+        except Exception as e:
+            logger.error("LLM API error: %s", e)
+            return {
+                "success": False,
+                "content": MOCK_MEMO,
+                "parsed": None,
+                "cost_usd": 0.0,
+                "tokens": 0,
+                "model": "fallback",
+                "error": str(e)
+            }
+
+    def _mock_result(self) -> dict:
+        parsed = InvestmentMemo.model_validate_json(MOCK_MEMO)
+        return {
+            "success": True,
+            "content": MOCK_MEMO,
+            "parsed": parsed,
+            "cost_usd": 0.0,
+            "tokens": 0,
+            "model": "mock"
+        }

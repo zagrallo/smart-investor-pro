@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="de" data-lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Investor Pro – Test Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f0f1a;--card:#1a1a2e;--accent:#00d4aa;--accent2:#6c63ff;--text:#e0e0e0;--muted:#888;--err:#ff4757;--ok:#2ed573}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.header{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:1.5rem 2rem;border-bottom:2px solid var(--accent);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem}
+.header h1{font-size:1.5rem;color:var(--accent);letter-spacing:1px}
+.header h1 span{color:var(--accent2)}
+.lang-switch{display:flex;gap:.5rem}
+.lang-btn{padding:.4rem .9rem;border:1px solid var(--muted);background:transparent;color:var(--text);border-radius:6px;cursor:pointer;font-size:.85rem;transition:.2s}
+.lang-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,212,170,.1)}
+.lang-btn:hover{border-color:var(--accent2)}
+.container{max-width:1200px;margin:0 auto;padding:1.5rem 2rem}
+grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+@media(max-width:800px){grid{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:12px;padding:1.5rem;border:1px solid #2a2a4a}
+.card h2{font-size:1.1rem;margin-bottom:1rem;color:var(--accent);display:flex;align-items:center;gap:.5rem}
+.card h2 .badge{font-size:.7rem;background:var(--accent2);color:#fff;padding:2px 8px;border-radius:10px}
+label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:.3rem;margin-top:.8rem}
+label:first-child{margin-top:0}
+input,select,textarea{width:100%;padding:.6rem .8rem;background:#0f0f1a;border:1px solid #2a2a4a;border-radius:8px;color:var(--text);font-size:.9rem;transition:.2s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+textarea{resize:vertical;min-height:70px;font-family:monospace}
+input::placeholder,textarea::placeholder{color:#555}
+.btn{padding:.7rem 1.5rem;border:none;border-radius:8px;font-size:.95rem;cursor:pointer;transition:.2s;font-weight:600}
+.btn-primary{background:var(--accent);color:#000}
+.btn-primary:hover{background:#00e6b8;transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.5;cursor:not-allow;transform:none}
+.btn-secondary{background:var(--accent2);color:#fff}
+.btn-secondary:hover{background:#7b73ff;transform:translateY(-1px)}
+.btn-ghost{background:transparent;color:var(--text);border:1px solid #3a3a5a}
+.btn-ghost:hover{border-color:var(--accent)}
+.btn-row{display:flex;gap:.6rem;margin-top:1rem;flex-wrap:wrap}
+.spacer{height:1px;background:linear-gradient(90deg,transparent,#2a2a4a,transparent);margin:1.2rem 0}
+.status{display:flex;align-items:center;gap:.5rem;font-size:.85rem;margin-top:.5rem}
+.status .dot{width:8px;height:8px;border-radius:50%}
+.status .dot.green{background:var(--ok)}
+.status .dot.red{background:var(--err)}
+.status .dot.yellow{background:#ffa502}
+
+.mono{font-family:monospace;font-size:.85rem}
+pre{background:#0a0a14;padding:1rem;border-radius:8px;overflow-x:auto;font-size:.8rem;line-height:1.5;max-height:400px;overflow-y:auto;border:1px solid #1a1a2e}
+pre .key{color:#7ec8e3}
+pre .str{color:#7ee37e}
+pre .num{color:#e3a77e}
+pre .bool{color:#c97ee3}
+pre .null{color:#888}
+pre .brkt{color:#e3e37e}
+
+.tabs{display:flex;gap:0;margin-bottom:1rem;border-bottom:1px solid #2a2a4a}
+.tab{padding:.6rem 1.2rem;cursor:pointer;border-bottom:2px solid transparent;font-size:.9rem;color:var(--muted);transition:.2s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--text)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+.api-key-row{display:flex;gap:.6rem;align-items:center}
+.api-key-row input{flex:1}
+.api-key-row .btn{padding:.5rem 1rem;font-size:.85rem;white-space:nowrap}
+
+.result-box{background:#0a0a14;border-radius:8px;padding:1rem;margin-top:.8rem;border:1px solid #1a1a2e;min-height:60px;font-size:.85rem}
+.result-box.success{border-left:3px solid var(--ok)}
+.result-box.error{border-left:3px solid var(--err)}
+.result-box h4{color:var(--accent);margin-bottom:.5rem}
+.result-box .row{display:flex;justify-content:space-between;padding:.2rem 0;border-bottom:1px solid #1a1a2e10}
+.result-box .row:last-child{border-bottom:none}
+.result-box .row .label{color:var(--muted)}
+.result-box .row .value{color:var(--text);font-weight:500}
+.flex-row{display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.flex-1{flex:1}
+.text-center{text-align:center}
+.mt-1{margin-top:1rem}
+.gap-1{gap:1rem}
+.toast{position:fixed;bottom:2rem;right:2rem;background:var(--card);border:1px solid var(--accent);padding:1rem 1.5rem;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.5);transform:translateY(120%);opacity:0;transition:.3s;max-width:400px;z-index:999}
+.toast.show{transform:translateY(0);opacity:1}
+.toast .title{color:var(--accent);font-weight:600;margin-bottom:.3rem}
+.toast p{font-size:.85rem;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Smart <span>Investor</span> Pro <span style="font-size:.7rem;color:var(--muted)">v0.2.0</span></h1>
+  <div class="lang-switch">
+    <button class="lang-btn active" data-lang="de" onclick="setLang('de')">DE</button>
+    <button class="lang-btn" data-lang="fr" onclick="setLang('fr')">FR</button>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- API Config -->
+<div class="card" style="margin-bottom:1.5rem">
+  <h2 id="lbl-api-config">&#9881; API Configuration</h2>
+  <div class="flex-row" style="gap:.8rem">
+    <div class="flex-1">
+      <label id="lbl-api-url" for="api-url">API Base URL</label>
+      <input id="api-url" value="http://localhost:8000" placeholder="http://localhost:8000">
+    </div>
+    <div style="flex:2">
+      <label id="lbl-api-key" for="api-key">API Keys (DeepSeek / EODHD)</label>
+      <div class="api-key-row">
+        <input id="api-key" type="password" value="" placeholder="DeepSeek: sk-...  |  EODHD: 65d4...">
+        <button class="btn btn-ghost" onclick="toggleKey()" id="key-toggle-btn">&#128065;</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:end;gap:.5rem">
+      <button class="btn btn-primary" onclick="testConnection()" id="btn-test">&#9654; Test</button>
+      <button class="btn btn-secondary" onclick="getToken()" id="btn-token">&#128273; Token</button>
+    </div>
+  </div>
+  <div class="status" id="conn-status"></div>
+</div>
+
+<grid>
+
+<!-- LEFT: Analysis -->
+<div class="card">
+  <h2 id="lbl-analysis">&#128202; Due Diligence Analysis <span class="badge">G1-G7</span></h2>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="idea" onclick="switchTab(this)">Text</div>
+    <div class="tab" data-tab="ticker" onclick="switchTab(this)">Ticker</div>
+  </div>
+
+  <div class="tab-content active" id="tab-idea">
+    <label id="lbl-idea-invest" for="investment-idea">Investment Idea</label>
+    <textarea id="investment-idea" rows="3" placeholder="e.g. Analyze SAP SE as a long-term DACH software investment."></textarea>
+  </div>
+
+  <div class="tab-content" id="tab-ticker">
+    <label id="lbl-ticker" for="ticker-input">Ticker Symbol</label>
+    <input id="ticker-input" placeholder="e.g. AAPL, TSLA, MSFT, SAP">
+    <label id="lbl-ticker-note" style="font-size:.75rem;color:var(--muted);margin-top:.3rem">EODHD fundamentals will be fetched automatically.</label>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="runAnalysis()" id="btn-analyze">&#9654; Run Analysis</button>
+    <button class="btn btn-ghost" onclick="downloadPDF()" id="btn-pdf">&#128196; Download PDF</button>
+    <button class="btn btn-ghost" onclick="viewAudit()" id="btn-audit">&#128214; Audit Trail</button>
+  </div>
+
+  <div id="analysis-result" class="result-box" style="display:none"></div>
+  <div id="audit-result" class="result-box" style="display:none"></div>
+</div>
+
+<!-- RIGHT: Quick Actions + Info -->
+<div class="card">
+  <h2 id="lbl-quick">&#9889; Quick Actions</h2>
+
+  <button class="btn btn-secondary" onclick="healthCheck()" style="width:100%;margin-bottom:.5rem">&#9829; Health Check</button>
+  <button class="btn btn-ghost" onclick="fillSample()" style="width:100%;margin-bottom:.5rem">&#128196; Fill Sample Idea</button>
+  <button class="btn btn-ghost" onclick="clearResults()" style="width:100%">&#128465; Clear All Results</button>
+
+  <div class="spacer"></div>
+
+  <h2 id="lbl-goals" style="font-size:.95rem">&#9989; Goal Verification</h2>
+  <div style="font-size:.8rem;line-height:2">
+    <div id="g-g1"><span id="cg1">&#9898;</span> G1: JWT Auth</div>
+    <div id="g-g2"><span id="cg2">&#9898;</span> G2: LLM Fallback</div>
+    <div id="g-g3"><span id="cg3">&#9898;</span> G3: Pydantic Memo</div>
+    <div id="g-g4"><span id="cg4">&#9898;</span> G4: PDF Report</div>
+    <div id="g-g5"><span id="cg5">&#9898;</span> G5: Audit Trail</div>
+    <div id="g-g6"><span id="cg6">&#9898;</span> G6: Cost Tracking</div>
+    <div id="g-g7"><span id="cg7">&#9898;</span> G7: Market Data</div>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div id="health-result" style="font-size:.85rem"></div>
+</div>
+
+</grid>
+
+</div>
+
+<div class="toast" id="toast">
+  <div class="title" id="toast-title">Success</div>
+  <p id="toast-msg">Operation completed.</p>
+</div>
+
+<script>
+const TRANS = {
+  de: {
+    api_config: "\u2699 API Konfiguration",
+    api_url: "API Basis-URL",
+    api_key: "API Schl\u00fcssel (DeepSeek / EODHD)",
+    analysis: "\uD83D\uDCA1 Due Diligence Analyse",
+    idea_invest: "Investment-Idee",
+    ticker: "Ticker Symbol",
+    ticker_note: "EODHD-Fundamentaldaten werden automatisch abgerufen.",
+    quick: "\u26A1 Schnellzugriff",
+    goals: "\u2705 Ziel-Status (G1-G7)",
+    analyze: "\u25B6 Analyse starten",
+    pdf: "\uD83D\uDCC4 PDF herunterladen",
+    audit: "\uD83D\uDCC6 Audit-Trail",
+    health: "\u2764 Health Check",
+    fill: "\uD83D\uDCC4 Beispiel-Idee einf\u00fcgen",
+    clear: "\uD83D\uDDD1 Ergebnisse l\u00f6schen",
+    test_conn: "\u25B6 Test",
+    token_btn: "\uD83D\uDD11 Token",
+    token_ok: "JWT Token erhalten",
+    token_fail: "Token-Fehler",
+    conn_ok: "Verbindung zum API-Server OK",
+    conn_fail: "Keine Verbindung",
+    analysis_ok: "Analyse erfolgreich",
+    analysis_fail: "Analyse fehlgeschlagen",
+    pdf_ok: "PDF generiert",
+    pdf_fail: "PDF-Fehler",
+    audit_ok: "Audit-Trail geladen",
+    no_data: "Keine Daten",
+  },
+  fr: {
+    api_config: "\u2699 Configuration API",
+    api_url: "URL de base API",
+    api_key: "Cl\u00e9s API (DeepSeek / EODHD)",
+    analysis: "\uD83D\uDCA1 Analyse Due Diligence",
+    idea_invest: "Id\u00e9e d\u2019investissement",
+    ticker: "Symbole du ticker",
+    ticker_note: "Les donn\u00e9es fondamentales EODHD sont r\u00e9cup\u00e9r\u00e9es automatiquement.",
+    quick: "\u26A1 Actions rapides",
+    goals: "\u2705 V\u00e9rification des objectifs (G1-G7)",
+    analyze: "\u25B6 Lancer l\u2019analyse",
+    pdf: "\uD83D\uDCC4 T\u00e9l\u00e9charger PDF",
+    audit: "\uD83D\uDCC6 Audit-Trail",
+    health: "\u2764 V\u00e9rification sant\u00e9",
+    fill: "\uD83D\uDCC4 Ins\u00e9rer un exemple",
+    clear: "\uD83D\uDDD1 Effacer les r\u00e9sultats",
+    test_conn: "\u25B6 Test",
+    token_btn: "\uD83D\uDD11 Jeton",
+    token_ok: "Jeton JWT obtenu",
+    token_fail: "Erreur de jeton",
+    conn_ok: "Connexion au serveur API OK",
+    conn_fail: "Pas de connexion",
+    analysis_ok: "Analyse r\u00e9ussie",
+    analysis_fail: "\u00c9chec de l\u2019analyse",
+    pdf_ok: "PDF g\u00e9n\u00e9r\u00e9",
+    pdf_fail: "Erreur PDF",
+    audit_ok: "Audit-Trail charg\u00e9",
+    no_data: "Aucune donn\u00e9e",
+  }
+};
+
+let LANG = "de";
+let JWT_TOKEN = null;
+let LAST_MEMO_JSON = null;
+
+function t(key) {
+  return (TRANS[LANG] && TRANS[LANG][key]) || TRANS.de[key] || key;
+}
+
+function setLang(lang) {
+  LANG = lang;
+  document.documentElement.lang = lang;
+  document.documentElement.dataset.lang = lang;
+  document.querySelectorAll(".lang-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.lang === lang);
+  });
+  translateUI();
+}
+
+function translateUI() {
+  const map = {
+    "lbl-api-config": "api_config",
+    "lbl-api-url": "api_url",
+    "lbl-api-key": "api_key",
+    "lbl-analysis": "analysis",
+    "lbl-idea-invest": "idea_invest",
+    "lbl-ticker": "ticker",
+    "lbl-ticker-note": "ticker_note",
+    "lbl-quick": "quick",
+    "lbl-goals": "goals",
+    "btn-analyze": "analyze",
+    "btn-pdf": "pdf",
+    "btn-audit": "audit",
+    "btn-test": "test_conn",
+    "btn-token": "token_btn",
+  };
+  for (const [id, key] of Object.entries(map)) {
+    const el = document.getElementById(id);
+    if (el) {
+      const txt = t(key);
+      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+        el.placeholder = txt;
+      } else if (el.tagName === "BUTTON") {
+        el.textContent = txt;
+      } else {
+        el.textContent = txt;
+      }
+    }
+  }
+}
+
+function getBaseUrl() {
+  return document.getElementById("api-url").value.replace(/\/+$/, "");
+}
+
+function getApiKey() {
+  return document.getElementById("api-key").value.trim();
+}
+
+function showToast(title, msg, isError = false) {
+  const t = document.getElementById("toast");
+  document.getElementById("toast-title").textContent = title;
+  document.getElementById("toast-msg").textContent = msg;
+  t.style.borderColor = isError ? "var(--err)" : "var(--accent)";
+  t.querySelector(".title").style.color = isError ? "var(--err)" : "var(--accent)";
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 3500);
+}
+
+function setStatus(html, ok = true) {
+  const s = document.getElementById("conn-status");
+  s.innerHTML = `<span class="dot ${ok ? 'green' : 'red'}"></span> ${html}`;
+}
+
+function markGoal(id, ok) {
+  const c = document.getElementById("cg" + id);
+  if (c) {
+    c.innerHTML = ok ? "\u2705" : "\u274C";
+    document.getElementById("g-g" + id).style.opacity = ok ? "1" : "0.5";
+  }
+}
+
+function toggleKey() {
+  const inp = document.getElementById("api-key");
+  inp.type = inp.type === "password" ? "text" : "password";
+}
+
+function toggleLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.textContent = loading ? "\u23F3 ..." : t(btnId.replace("btn-", ""));
+}
+
+function showResult(id, data, isError = false) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = "block";
+  el.className = "result-box " + (isError ? "error" : "success");
+  if (typeof data === "string") {
+    el.innerHTML = `<pre>${escapeHtml(data)}</pre>`;
+  } else {
+    el.innerHTML = `<pre>${syntaxHighlight(JSON.stringify(data, null, 2))}</pre>`;
+  }
+}
+
+function escapeHtml(t) {
+  const d = document.createElement("div");
+  d.textContent = t;
+  return d.innerHTML;
+}
+
+function syntaxHighlight(json) {
+  return json.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"([^"]+)":/g, '<span class="key">"$1":</span>')
+    .replace(/"([^"]+)"(?=[,\s\]}])/g, '<span class="str">"$1"</span>')
+    .replace(/\b(-?\d+\.?\d*)\b/g, '<span class="num">$1</span>')
+    .replace(/\b(true|false)\b/g, '<span class="bool">$1</span>')
+    .replace(/\bnull\b/g, '<span class="null">null</span>');
+}
+
+async function apiFetch(path, options = {}) {
+  const base = getBaseUrl();
+  const headers = { "Content-Type": "application/json", ...options.headers };
+  if (JWT_TOKEN) headers["Authorization"] = `Bearer ${JWT_TOKEN}`;
+  const resp = await fetch(base + path, { ...options, headers });
+  const ct = resp.headers.get("content-type") || "";
+  if (ct.includes("application/pdf")) {
+    return { ok: resp.ok, status: resp.status, blob: await resp.blob() };
+  }
+  const body = await resp.text();
+  try { return { ok: resp.ok, status: resp.status, data: JSON.parse(body) }; }
+  catch { return { ok: resp.ok, status: resp.status, data: body }; }
+}
+
+async function healthCheck() {
+  const r = document.getElementById("health-result");
+  r.innerHTML = "<span style='color:var(--muted)'>Checking...</span>";
+  try {
+    const res = await apiFetch("/health");
+    if (res.ok) {
+      const h = res.data;
+      r.innerHTML = `
+        <div class="status"><span class="dot green"></span> <strong>${h.status}</strong></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem;margin-top:.5rem;font-size:.8rem">
+          <span class="label">Version:</span><span>${h.version}</span>
+          <span class="label">Provider:</span><span>${h.provider}</span>
+          <span class="label">Compliance:</span><span>${h.compliance}</span>
+          <span class="label">Mock Mode:</span><span>${h.mock_mode}</span>
+        </div>`;
+      setStatus(t("conn_ok"), true);
+    } else {
+      r.innerHTML = `<span style="color:var(--err)">Error ${res.status}</span>`;
+      setStatus(t("conn_fail"), false);
+    }
+    markGoal(1, res.ok);
+  } catch (e) {
+    r.innerHTML = `<span style="color:var(--err)">${e.message}</span>`;
+    setStatus(t("conn_fail"), false);
+  }
+}
+
+async function testConnection() {
+  const btn = document.getElementById("btn-test");
+  const orig = btn.textContent;
+  btn.textContent = "\u23F3 ...";
+  await healthCheck();
+  btn.textContent = orig;
+}
+
+async function getToken() {
+  try {
+    const res = await apiFetch("/auth/token", { method: "POST" });
+    if (res.ok && res.data.access_token) {
+      JWT_TOKEN = res.data.access_token;
+      showToast(t("token_ok"), JWT_TOKEN.slice(0, 50) + "...");
+      setStatus("JWT: " + JWT_TOKEN.slice(0, 25) + "...", true);
+      markGoal(1, true);
+      document.getElementById("btn-token").textContent = "\u2705 " + t("token_btn");
+    } else {
+      showToast(t("token_fail"), res.data?.detail || "Unknown", true);
+    }
+  } catch (e) {
+    showToast(t("token_fail"), e.message, true);
+  }
+}
+
+async function runAnalysis() {
+  if (!JWT_TOKEN) {
+    showToast("Token required", "Get a token first via the Token button.", true);
+    return;
+  }
+
+  const tabs = document.querySelectorAll(".tab");
+  let idea = "";
+  let isTicker = false;
+
+  tabs.forEach(t => {
+    if (t.dataset.tab === "ticker" && t.classList.contains("active")) isTicker = true;
+  });
+
+  if (isTicker) {
+    const ticker = document.getElementById("ticker-input").value.trim().toUpperCase();
+    if (!ticker) { showToast("Error", "Enter a ticker symbol.", true); return; }
+    idea = `Analyze ${ticker} as a long-term investment.`;
+  } else {
+    idea = document.getElementById("investment-idea").value.trim();
+    if (!idea) { showToast("Error", "Enter an investment idea.", true); return; }
+  }
+
+  toggleLoading("btn-analyze", true);
+  document.getElementById("audit-result").style.display = "none";
+
+  try {
+    const res = await apiFetch("/v1/analyze", {
+      method: "POST",
+      body: JSON.stringify({ idea })
+    });
+
+    if (res.ok && res.data?.status === "success") {
+      LAST_MEMO_JSON = res.data.data.memo;
+      const d = res.data.data;
+      const m = d.memo;
+      showResult("analysis-result", m);
+
+      markGoal(2, true);
+      markGoal(3, true);
+      markGoal(6, d.cost_usd !== undefined);
+      markGoal(7, d.ticker || m.company_name !== "MockCorp AG");
+
+      showToast(t("analysis_ok"),
+        `${m.company_name} | ${m.recommended_action} | $${d.cost_usd} | audit: ${d.audit_id}`);
+
+      // Update goals display
+      document.querySelector("#analysis-result").innerHTML = `
+        <h4>${m.company_name} – ${m.recommended_action} (${(m.confidence_score * 100).toFixed(0)}%)</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-top:.8rem">
+          <div class="row"><span class="label">Sector:</span><span class="value">${m.sector}</span></div>
+          <div class="row"><span class="label">Cost:</span><span class="value">$${d.cost_usd}</span></div>
+          <div class="row"><span class="label">Provider:</span><span class="value">${d.provider_status}</span></div>
+          <div class="row"><span class="label">Confidence:</span><span class="value">${(m.confidence_score * 100).toFixed(0)}%</span></div>
+          <div class="row"><span class="label">Audit ID:</span><span class="value">${d.audit_id}</span></div>
+          <div class="row"><span class="label">Tokens:</span><span class="value">${d.tokens_used}</span></div>
+        </div>
+        <div class="spacer" style="margin:.8rem 0"></div>
+        <div style="font-size:.85rem">
+          <strong>Thesis:</strong> ${m.investment_thesis}<br><br>
+          <strong>Risks:</strong>
+          ${(m.key_risks || []).map(r => `<span style="display:inline-block;background:rgba(255,71,87,.1);color:var(--err);padding:2px 8px;border-radius:10px;font-size:.75rem;margin:2px">${r.level}: ${r.category}</span>`).join(" ")}
+        </div>`;
+    } else {
+      showResult("analysis-result", res.data || { error: "Unknown" }, true);
+      showToast(t("analysis_fail"), res.data?.detail || "Unknown error", true);
+    }
+  } catch (e) {
+    showResult("analysis-result", e.message, true);
+    showToast(t("analysis_fail"), e.message, true);
+  }
+
+  toggleLoading("btn-analyze", false);
+}
+
+async function downloadPDF() {
+  if (!JWT_TOKEN) {
+    showToast("Token required", "Get a token first.", true);
+    return;
+  }
+  if (!LAST_MEMO_JSON) {
+    showToast("No data", "Run an analysis first.", true);
+    return;
+  }
+
+  toggleLoading("btn-pdf", true);
+
+  try {
+    const idea = LAST_MEMO_JSON.company_name
+      ? `Analyze ${LAST_MEMO_JSON.company_name}`
+      : "Analyze Tesla Inc.";
+    const res = await apiFetch("/v1/report/pdf?idea=" + encodeURIComponent(idea));
+
+    if (res.ok && res.blob) {
+      const url = URL.createObjectURL(res.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(LAST_MEMO_JSON.company_name || "investment").replace(/\s+/g, "_")}_memo.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      markGoal(4, true);
+      showToast(t("pdf_ok"), `PDF downloaded (${res.blob.size.toLocaleString()} bytes)`);
+    } else {
+      showToast(t("pdf_fail"), `HTTP ${res.status}`, true);
+    }
+  } catch (e) {
+    showToast(t("pdf_fail"), e.message, true);
+  }
+
+  toggleLoading("btn-pdf", false);
+}
+
+async function viewAudit() {
+  if (!JWT_TOKEN) {
+    showToast("Token required", "Get a token first.", true);
+    return;
+  }
+
+  toggleLoading("btn-audit", true);
+
+  try {
+    const res = await apiFetch("/v1/audit");
+    if (res.ok) {
+      showResult("audit-result", res.data);
+      markGoal(5, res.data.total_analyses > 0);
+      showToast(t("audit_ok"), `${res.data.total_analyses} entries`);
+    } else {
+      showResult("audit-result", res.data || "Error", true);
+    }
+  } catch (e) {
+    showResult("audit-result", e.message, true);
+  }
+
+  toggleLoading("btn-audit", false);
+}
+
+function switchTab(el) {
+  document.querySelectorAll(".tabs .tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById("tab-" + el.dataset.tab).classList.add("active");
+}
+
+function fillSample() {
+  document.querySelector('.tab[data-tab="idea"]').click();
+  document.getElementById("investment-idea").value =
+    "Analyze SAP SE (SAP.DE) as a DACH-region enterprise software leader. " +
+    "Consider cloud transition progress, recurring revenue model, and EU regulatory advantages.";
+}
+
+function clearResults() {
+  ["analysis-result", "audit-result", "health-result"].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.display = "none";
+    el.innerHTML = "";
+  });
+  LAST_MEMO_JSON = null;
+  for (let i = 1; i <= 7; i++) markGoal(i, false);
+  setStatus("Ready", true);
+  document.getElementById("btn-token").textContent = t("token_btn");
+  JWT_TOKEN = null;
+}
+
+setLang("de");
+healthCheck();
+</script>
+</body>
+</html>
