@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Response, Request, APIRouter
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
@@ -127,6 +127,13 @@ async def correlation_id_middleware(request: Request, call_next):
 class AnalyzeRequest(BaseModel):
     idea: str = "Analyze Tesla Inc. (TSLA) as a long-term investment opportunity."
 
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard():
+    import os
+    path = os.path.join(os.path.dirname(__file__), "dashboard.html")
+    with open(path, encoding="utf-8") as f:
+        return f.read()
 
 @app.get("/health")
 async def health():
