@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Response, Request, APIRouter
+from fastapi import FastAPI, Depends, HTTPException, Response, Request, APIRouter, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -162,6 +162,19 @@ async def analyze_v1(
     result = await agent.run_analysis(request.idea, user["id"])
     return {"status": "success", "data": result}
 
+
+@v1.post("/upload")
+async def upload_analysis_v1(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    if not file.filename or not file.filename.lower().endswith(".md"):
+        raise HTTPException(400, "Nur .md Dateien werden unterstützt.")
+    content = (await file.read()).decode("utf-8", errors="replace")
+    idea = f"Analysiere die folgende Markdown-Datei '{file.filename}':\n\n{content[:4000]}"
+    logger.info("Upload analysis", extra={"user": user["id"], "file": file.filename, "size": len(content)})
+    result = await agent.run_analysis(idea, user["id"])
+    return {"status": "success", "data": result, "file": file.filename}
 
 @v1.get("/report/pdf")
 async def pdf_report_v1(

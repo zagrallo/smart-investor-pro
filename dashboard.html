@@ -77,6 +77,17 @@ details[open] summary{margin-bottom:.5rem}
 .toast .t-msg{font-size:.8rem;color:var(--muted)}
 .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
+.dropzone{background:var(--bg);border:2px dashed var(--border);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;transition:.2s;margin-bottom:.8rem}
+.dropzone:hover,.dropzone.dragover{border-color:var(--accent);background:rgba(0,212,170,.05)}
+.dropzone svg{width:32px;height:32px;opacity:.4;margin-bottom:.5rem}
+.dropzone p{font-size:.85rem;color:var(--muted)}
+.dropzone .fname{font-size:.8rem;color:var(--accent);font-weight:600;margin-top:.3rem}
+.tabs{display:flex;gap:0;margin-bottom:1rem;border-bottom:1px solid var(--border)}
+.tab{padding:.5rem 1rem;cursor:pointer;font-size:.85rem;color:var(--muted);border-bottom:2px solid transparent;transition:.2s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--text)}
+.tab-content{display:none}
+.tab-content.active{display:block}
 </style>
 </head>
 <body>
@@ -98,10 +109,28 @@ details[open] summary{margin-bottom:.5rem}
 <div>
   <div class="card" style="margin-bottom:1.5rem">
     <div class="card-title">&#128200; Investment-Analyse</div>
-    <div class="input-group">
-      <label for="idea-input">Unternehmen oder Aktien-Idee</label>
-      <textarea id="idea-input" placeholder="z.B. Analysiere Apple Inc (AAPL) als langfristiges Investment&#10;oder: Analysiere SAP SE für das DACH-Software-Portfolio">Analysiere Apple Inc (AAPL) als langfristiges Investment</textarea>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="text" onclick="switchTab(this)">&#128221; Text</div>
+      <div class="tab" data-tab="file" onclick="switchTab(this)">&#128196; .md Datei</div>
     </div>
+
+    <div class="tab-content active" id="tab-text">
+      <div class="input-group">
+        <label for="idea-input">Unternehmen oder Aktien-Idee</label>
+        <textarea id="idea-input" placeholder="z.B. Analysiere Apple Inc (AAPL) als langfristiges Investment&#10;oder: Analysiere SAP SE für das DACH-Software-Portfolio">Analysiere Apple Inc (AAPL) als langfristiges Investment</textarea>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-file">
+      <div class="dropzone" id="dropzone" onclick="$('file-input').click()" ondragover="this.classList.add('dragover');event.preventDefault()" ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        <p>Markdown-Datei hier ablegen oder klicken zum Auswählen</p>
+        <div id="file-name" class="fname"></div>
+      </div>
+      <input type="file" id="file-input" accept=".md" style="display:none" onchange="handleFileSelect(event)">
+    </div>
+
     <div class="btn-row">
       <button class="btn btn-primary" onclick="runAnalysis()" id="btn-analyze">&#9654; Analyse starten</button>
       <button class="btn btn-secondary btn-sm" onclick="downloadPDF()" id="btn-pdf" disabled>&#128196; PDF</button>
@@ -210,8 +239,7 @@ async function init(){
 }
 
 async function runAnalysis(){
-  const idea=$('idea-input').value.trim();
-  if(!idea){showToast('Eingabe fehlt','Bitte eine Investment-Idee eingeben.',true);return}
+  const isFileTab = document.querySelector('.tab[data-tab="file"]').classList.contains('active');
 
   // Get token first
   if(!JWT){
@@ -226,10 +254,22 @@ async function runAnalysis(){
   $('audit-content').style.display='none';
 
   try{
-    const r=await api('/v1/analyze',{
-      method:'POST',
-      body:JSON.stringify({idea})
-    });
+    let r;
+
+    if(isFileTab){
+      // File upload
+      if(!UPLOADED_FILE){showToast('Keine Datei','Bitte eine .md Datei auswählen.',true);btn.disabled=false;btn.innerHTML='&#9654; Analyse starten';return}
+      const form=new FormData();form.append('file',UPLOADED_FILE);
+      r=await fetch(API+'/v1/upload',{method:'POST',headers:{'Authorization':'Bearer '+JWT},body:form});
+      const txt=await r.text();
+      try{r={ok:r.ok,status:r.status,data:JSON.parse(txt)}}
+      catch{r={ok:false,status:r.status,data:txt}}
+    }else{
+      // Text
+      const idea=$('idea-input').value.trim();
+      if(!idea){showToast('Eingabe fehlt','Bitte eine Investment-Idee eingeben.',true);btn.disabled=false;btn.innerHTML='&#9654; Analyse starten';return}
+      r=await api('/v1/analyze',{method:'POST',body:JSON.stringify({idea})});
+    }
 
     if(r.ok && r.data?.status==='success'){
       const d=r.data.data;
@@ -349,6 +389,29 @@ async function loadAudit(){
   $('empty-state').style.display='none';
   $('result-content').style.display='none';
   $('audit-content').style.display='block';
+}
+
+let UPLOADED_FILE = null;
+
+function switchTab(el){
+  document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-'+el.dataset.tab).classList.add('active');
+}
+
+function handleDrop(e){
+  e.preventDefault();$('dropzone').classList.remove('dragover');
+  const file=e.dataTransfer.files[0];if(file)setFile(file);
+}
+function handleFileSelect(e){
+  const file=e.target.files[0];if(file)setFile(file);
+}
+function setFile(file){
+  if(!file.name.endsWith('.md')){showToast('Falsches Format','Nur .md Dateien werden unterstützt.',true);return}
+  UPLOADED_FILE=file;
+  $('file-name').textContent='📄 '+file.name+' ('+(file.size/1024).toFixed(1)+' KB)';
+  showToast('Datei geladen',file.name);
 }
 
 function addHistory(company, action, cost){
