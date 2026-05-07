@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime, timezone
 from enum import Enum
@@ -23,6 +23,13 @@ class RiskAssessment(BaseModel):
     level: RiskLevel
     description: str
     mitigation: Optional[str] = None
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def normalize_level(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        return v
 
 
 class InvestmentMemo(BaseModel):

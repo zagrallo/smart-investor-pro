@@ -71,12 +71,22 @@ class LLMRouter:
                 "max_tokens": 2000
             }
             if response_format:
-                kwargs["response_format"] = {"type": "json_object"}
-                schema_hint = (
-                    f"\n\nReturn ONLY valid JSON matching this schema:\n"
-                    f"{json.dumps(response_format.model_json_schema(), indent=2)}"
+                messages[-1]["content"] += (
+                    "\n\nRespond ONLY with a single JSON object. Use EXACTLY these field names (no substitutes, no extra fields):\n"
+                    "company_name (string), sector (string), investment_thesis (string),\n"
+                    "financial_highlights (JSON object with metrics, NOT a string),\n"
+                    "market_opportunity (string), competitive_advantages (array of strings),\n"
+                    "key_risks (array of objects, each with: category, level [LOW/MEDIUM/HIGH/CRITICAL], description, mitigation),\n"
+                    "recommended_action (BUY/HOLD/PASS/NEED_MORE_INFO),\n"
+                    "confidence_score (float 0.0-1.0)\n\n"
+                    "Example:\n"
+                    '{"company_name":"Apple Inc","sector":"Technology","investment_thesis":"Thesis text...",'
+                    '"financial_highlights":{"pe_ratio":28.5,"market_cap":3200000000000},'
+                    '"market_opportunity":"Large TAM",'
+                    '"competitive_advantages":["Ecosystem lock-in"],'
+                    '"key_risks":[{"category":"Regulatory","level":"MEDIUM","description":"Risk text","mitigation":"Plan text"}],'
+                    '"recommended_action":"BUY","confidence_score":0.82}'
                 )
-                messages[-1]["content"] += schema_hint
 
             response = await self.client.chat.completions.create(**kwargs)
             content = response.choices[0].message.content

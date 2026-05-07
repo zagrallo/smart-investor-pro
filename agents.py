@@ -1,6 +1,7 @@
 from llm_router import LLMRouter
 from compliance import ComplianceEngine, sanitize_input
 from config import settings
+from models import InvestmentMemo
 import logging
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ class InvestmentAgent:
             f"(BUY/HOLD/PASS/NEED_MORE_INFO). Incorporate the provided financial metrics."
         )
 
-        result = await self.llm.analyze(prompt, self.SYSTEM_PROMPT)
+        result = await self.llm.analyze(prompt, self.SYSTEM_PROMPT, response_format=InvestmentMemo)
 
         if not result["success"]:
             logger.error("Analysis failed: %s", result.get("error", "unknown"))
