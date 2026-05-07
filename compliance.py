@@ -17,10 +17,10 @@ DISCLAIMER_EU = (
 )
 
 
-def sanitize_input(text: str) -> str:
+def sanitize_input(text: str, max_len: int = 32000) -> str:
     """Remove potential prompt-injection patterns and limit length."""
     text = re.sub(r"(?i)(system|ignore|override|new\s*instruction|act\s*as|you\s*are\s*now)\s*[:\]\-]", "", text)
-    return text.strip()[:4000]
+    return text.strip()[:max_len]
 
 
 class ComplianceEngine:

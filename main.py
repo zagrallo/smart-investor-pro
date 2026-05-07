@@ -171,7 +171,7 @@ async def upload_analysis_v1(
     if not file.filename or not file.filename.lower().endswith(".md"):
         raise HTTPException(400, "Nur .md Dateien werden unterstützt.")
     content = (await file.read()).decode("utf-8", errors="replace")
-    idea = f"Analysiere die folgende Markdown-Datei '{file.filename}':\n\n{content[:4000]}"
+    idea = f"Analysiere die folgende Markdown-Datei '{file.filename}':\n\n{content[:32000]}"
     logger.info("Upload analysis", extra={"user": user["id"], "file": file.filename, "size": len(content)})
     result = await agent.run_analysis(idea, user["id"])
     return {"status": "success", "data": result, "file": file.filename}
