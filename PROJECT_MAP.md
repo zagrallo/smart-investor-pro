@@ -1,6 +1,6 @@
-# PROJECT_MAP.md – Smart Investor Pro v0.2.0
+# PROJECT_MAP.md – Smart Investor Pro v0.4.0
 
-> Generated: 2026-05-07 | Status: PRODUCTION POLISHED
+> Generated: 2026-05-08 | Status: VISUAL + MULTI-LLM ENHANCED
 
 ---
 
@@ -37,6 +37,19 @@ smart-investor-mvp/
 ├── agents.py               # Analysis orchestrator
 ├── compliance.py           # Audit chain, sanitization, EODHD connector
 ├── reports.py              # 9-section PDF generation
+├── startup_dd/
+│   ├── startup_schema.py     # StartupInvestmentMemo, StartupMetrics, Recommendation, VisualMetrics
+│   ├── startup_agent.py      # StartupAgent (Analysen + Visuals)
+│   ├── vc_prompt.py          # VC-System-Prompt (DE)
+│   ├── document_parser.py    # Regex-Metrik-Extraktion
+│   ├── evaluator.py          # Gewichtete Startup-Bewertung
+│   ├── router.py             # MultiLLMRouter (DeepSeek + Gemini + Cache)
+│   ├── consensus.py          # Weighted Consensus Scoring + Agreement Check
+│   ├── visuals.py            # Scorecard/Radar/Unit Economics Calculator
+│   ├── dashboard_html.py     # Interactive HTML Dashboard Generator
+│   ├── cache.py              # Redis/In-Memory Cache Layer
+│   ├── reports.py            # Startup PDF Generation (mit Scorecard)
+│   └── __init__.py
 ├── data/
 │   ├── eodhd_connector.py  # Async EODHD API + ticker mocks
 │   └── json_parser.py      # 3-strategy JSON extraction
@@ -77,9 +90,11 @@ User → dashboard.html (DE/FR)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Multi-LLM (Gemini/Mistral) | Pending Phase 2 | Router architecture ready |
-| Redis caching | Pending Phase 2 | For repeated ticker queries |
-| PostgreSQL | Pending Phase 2 | SQLite adequate for beta |
+| Live Dashboard (Streamlit) | Pending v0.5 | Interactive scenario exploration |
+| Competitor Live-Feed | Pending v0.5 | Web-scraping competitor pricing |
+| Founder Q&A Generator | Pending v0.5 | KI-generierte Fragen für DD-Calls |
+| Pitch-Deck Auto-Export | Pending v0.5 | 10-Folien PPTX aus Memo |
+| PostgreSQL | Pending Phase 3 | SQLite adequate for beta |
 | E2E Playwright tests | Pending Phase 2 | API coverage is sufficient |
 | OAuth2/SSO | Pending Phase 2 | JWT sufficient for beta |
 | Stripe billing | Pending Phase 2 | Manual onboarding for beta |
@@ -97,6 +112,18 @@ User → dashboard.html (DE/FR)
 | Load test | `tests/load_test.py` | Performance baseline with CLI args |
 | Beta feedback | `BETA_FEEDBACK.md` | Structured bug reporting template |
 | Env config | `.env.example` | Added `APP_ENV`, `LOG_LEVEL`, `LOG_FORMAT`, `MAX_REQUESTS_PER_MINUTE` |
+
+## [v0.4.0 CHANGES]
+
+| Change | Files | Rationale |
+|--------|-------|-----------|
+| Weighted Consensus Engine | `startup_dd/consensus.py` (new) | Weighted scoring + field agreement boost |
+| Visual Metrics Calculator | `startup_dd/visuals.py` (new) | Scorecard, Radar, Unit Economics, Projections |
+| Interactive HTML Dashboard | `startup_dd/dashboard_html.py` (new) | Chart.js-based investor dashboard |
+| Scorecard in PDF | `startup_dd/reports.py` | Enhanced PDF with visual metrics section |
+| Schema extended | `startup_dd/startup_schema.py` | Added `visual_metrics: Optional[Dict]` |
+| Consensus v2 in Router | `startup_dd/router.py` | Uses `calculate_consensus` with provider agreement |
+| Visuals in StartupAgent | `startup_dd/startup_agent.py` | Auto-computes visuals on every analysis |
 
 ### API Map
 

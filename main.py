@@ -7,8 +7,10 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from config import settings
 from agents import InvestmentAgent
+from startup_dd import StartupAgent
 from compliance import ComplianceEngine
 from reports import generate_pdf
+from startup_dd.reports import generate_startup_pdf
 import logging
 import json as json_lib
 import time
@@ -43,9 +45,11 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     await compliance_engine.init_db()
-    logger.info("Started", extra={"version": settings.VERSION, "mock": settings.USE_MOCK_DATA, "env": settings.APP_ENV})
+    logger.info("Started", extra={"version": settings.VERSION, "mock": settings.USE_MOCK_DATA, "env": settings.APP_ENV, "cache_enabled": settings.CACHE_ENABLED})
     yield
     try:
+        from startup_dd.cache import get_cache
+        await get_cache().close()
         await compliance_engine.close()
         logger.info("Graceful shutdown complete")
     except Exception as e:
@@ -66,6 +70,7 @@ v1 = APIRouter(prefix="/v1")
 
 security = HTTPBearer()
 agent = InvestmentAgent()
+startup_agent = StartupAgent()
 compliance_engine = ComplianceEngine()
 
 BETA_USERS = {
@@ -76,7 +81,7 @@ def reset_rate_limits():
     global _request_log
     _request_log = {}
 
-_request_log: dict[str, list[float]] = {}
+_request_log: dict[str, dict] = {}
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -106,13 +111,20 @@ async def rate_limit_middleware(request: Request, call_next):
         return await call_next(request)
     client_ip = request.client.host
     now = time.time()
-    _request_log[client_ip] = [t for t in _request_log.get(client_ip, []) if now - t < 60]
-    if len(_request_log[client_ip]) >= settings.MAX_REQUESTS_PER_MINUTE:
+    tokens = _request_log.get(client_ip)
+    if tokens is None:
+        _request_log[client_ip] = {"tokens": settings.MAX_REQUESTS_PER_MINUTE - 1, "last_refill": now}
+        return await call_next(request)
+    elapsed = now - tokens["last_refill"]
+    tokens["tokens"] = min(settings.MAX_REQUESTS_PER_MINUTE, tokens["tokens"] + elapsed * (settings.MAX_REQUESTS_PER_MINUTE / 60))
+    tokens["last_refill"] = now
+    if tokens["tokens"] < 1:
+        wait = int((1 - tokens["tokens"]) * 60 / settings.MAX_REQUESTS_PER_MINUTE) + 1
         return JSONResponse(
             status_code=429,
-            content={"detail": "Too many requests. Please wait 60 seconds before retrying."}
+            content={"detail": f"Too many requests. Retry in {wait}s."}
         )
-    _request_log.setdefault(client_ip, []).append(now)
+    tokens["tokens"] -= 1
     return await call_next(request)
 
 
@@ -127,6 +139,10 @@ async def correlation_id_middleware(request: Request, call_next):
 class AnalyzeRequest(BaseModel):
     idea: str = "Analyze Tesla Inc. (TSLA) as a long-term investment opportunity."
 
+class StartupAnalyzeRequest(BaseModel):
+    company: str
+    document: str
+
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
@@ -137,13 +153,20 @@ async def dashboard():
 
 @app.get("/health")
 async def health():
+    from startup_dd.cache import get_cache
+    cache = get_cache()
     return {
         "status": "healthy",
         "version": settings.VERSION,
         "provider": "llm" if (settings.LLM_API_KEY or settings.DEEPSEEK_API_KEY) else "mock",
         "compliance": "EU/DE",
         "mock_mode": settings.USE_MOCK_DATA,
-        "env": settings.APP_ENV
+        "env": settings.APP_ENV,
+        "multi_llm": agent.llm.health(),
+        "parallel": settings.PARALLEL_ANALYSIS,
+        "rate_limiter": "token_bucket",
+        "rate_limit": f"{settings.MAX_REQUESTS_PER_MINUTE}/min",
+        "cache": cache.summary(),
     }
 
 
@@ -182,15 +205,98 @@ async def pdf_report_v1(
     user: dict = Depends(get_current_user)
 ):
     logger.info("PDF report request", extra={"user": user["id"]})
-    result = await agent.run_analysis(idea, user["id"])
-    pdf_bytes = await asyncio.to_thread(generate_pdf, result["memo"])
+    try:
+        result = await agent.run_analysis(idea, user["id"])
+        if not result or "memo" not in result:
+            raise HTTPException(status_code=500, detail="Analysis returned no memo")
+        pdf_bytes = await asyncio.to_thread(generate_pdf, result["memo"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("PDF report failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    company = result["memo"].get("company_name", "Investment")
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f"attachment; filename={result['memo']['company_name'].replace(' ', '_')}_memo.pdf"
+            "Content-Disposition": f"attachment; filename={company.replace(' ', '_')}_memo.pdf"
         }
     )
+
+
+class StartupPdfRequest(BaseModel):
+    memo: dict
+
+@v1.post("/report/startup-pdf")
+async def startup_pdf_report_v1(
+    request: StartupPdfRequest,
+    user: dict = Depends(get_current_user)
+):
+    memo = request.memo
+    if not memo or not memo.get("company_name"):
+        raise HTTPException(status_code=400, detail="Memo must contain at least 'company_name'")
+    logger.info("Startup PDF report request", extra={"user": user["id"], "company": memo.get("company_name")})
+    try:
+        pdf_bytes = await asyncio.to_thread(generate_startup_pdf, memo)
+    except Exception as e:
+        logger.error("Startup PDF generation failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    company = memo.get("company_name", "Startup")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename={company.replace(' ', '_')}_memo.pdf"
+        }
+    )
+
+@v1.post("/analyze/startup")
+async def analyze_startup_v1(
+    request: StartupAnalyzeRequest,
+    user: dict = Depends(get_current_user)
+):
+    logger.info("Startup DD request", extra={"user": user["id"], "company": request.company})
+    result = await startup_agent.analyze(request.company, request.document, session_id=user["id"])
+    return {"status": "success", "data": result, "mode": "startup_dd"}
+
+
+@v1.post("/upload/startup")
+async def upload_startup_v1(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    if not file.filename or not file.filename.lower().endswith(".md"):
+        raise HTTPException(400, "Nur .md Dateien werden unterstützt.")
+    content = (await file.read()).decode("utf-8", errors="replace")
+    company_name = file.filename.replace("-INVESTOR-DOKUMENT.md", "").replace(".md", "").strip()
+    logger.info("Startup DD upload", extra={"user": user["id"], "file": file.filename, "size": len(content)})
+    result = await startup_agent.analyze(company_name, content, session_id=user["id"])
+    return {"status": "success", "data": result, "file": file.filename, "mode": "startup_dd"}
+
+
+@v1.post("/cache/clear")
+async def clear_cache_v1(user: dict = Depends(get_current_user)):
+    from startup_dd.cache import get_cache
+    await get_cache().clear()
+    return {"status": "cache_cleared"}
+
+
+@v1.get("/cost")
+async def session_cost_v1(user: dict = Depends(get_current_user)):
+    from startup_dd.cache import get_cache
+    cost = agent.llm.get_session_cost(user["id"])
+    startup_cost = startup_agent.llm.get_session_cost(user["id"])
+    return {
+        "user_id": user["id"],
+        "investment_agent_cost": round(cost, 6),
+        "startup_dd_cost": round(startup_cost, 6),
+        "total_cost": round(cost + startup_cost, 6),
+        "budget": settings.LLM_COST_BUDGET,
+        "budget_remaining": round(settings.LLM_COST_BUDGET - cost - startup_cost, 6),
+        "parallel_mode": settings.PARALLEL_ANALYSIS,
+        "cache": get_cache().summary(),
+    }
 
 
 @v1.get("/audit")

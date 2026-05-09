@@ -58,12 +58,41 @@ class ComplianceEngine:
         }
 
     async def fetch_market_data(self, ticker: str) -> dict:
-        """Async EODHD fetch - non-blocking."""
+        """Async EODHD fetch - non-blocking. Returns empty data for private companies."""
+        if not ticker:
+            return {"ticker": "", "source": "none", "note": "Private company – no market data available"}
         data = await self.eodhd.get_financials(ticker)
         return data.model_dump()
 
+    TICKER_BLOCKLIST = {"GH", "GMBH", "UG", "SAAS", "KI", "DACH", "SME", "RTL", "SOM",
+        "ARR", "MRR", "LTV", "CAC", "TAM", "SAM", "SOM", "PWA", "API",
+        "CRM", "ERP", "CRM", "CEO", "CTO", "CFO", "MVP", "B2B", "B2C",
+        "D2C", "ROI", "KPI", "SEO", "DSGVO", "GDPR", "MIFID", "GmbH",
+        "UG", "EV", "EBIT", "EBITDA", "USA", "EU", "UK", "SWOT", "AG",
+        "INC", "CORP", "LTD", "LLC", "GMBH", "WAIT", "CLV", "LTV"}
+
+    PRIVATE_KEYWORDS = [
+        "pre-seed", "seed", "pre revenue", "pre-revenue",
+        "early stage", "startup", "private company",
+        "pre seed", "friends and family"
+    ]
+
+    def _is_private_company(self, text: str) -> bool:
+        lower = text.lower()
+        # GmbH/UG/AG im Text → Privatunternehmen (DACH)
+        if re.search(r'\b(gmbh|ug\b|ag\b|limited|llc|pte\.?\s*ltd)', lower):
+            return True
+        for kw in self.PRIVATE_KEYWORDS:
+            if kw in lower:
+                return True
+        return False
+
     def extract_ticker(self, idea: str) -> str:
-        """Simple ticker extraction from investment idea text."""
+        """Extract ticker from investment idea text. Returns empty string for private companies."""
+        if self._is_private_company(idea):
+            logger.debug("Private company detected, skipping ticker extraction")
+            return ""
+
         patterns = [
             r"\(([A-Z]{1,5})\)",
             r"ticker[:\s]+([A-Z]{1,5})",
@@ -72,13 +101,18 @@ class ComplianceEngine:
         for pattern in patterns:
             match = re.search(pattern, idea)
             if match:
-                return match.group(1)
+                ticker = match.group(1).upper()
+                if ticker not in self.TICKER_BLOCKLIST:
+                    return ticker
+
+        # Fallback: Nur nach bekannten Ticker-Format suchen (z.B. "TSLA" in "...Tesla (TSLA)...")
+        # aber Blocklist-False-Positives wie "GmbH" → "GH" ignorieren
         words = idea.split()
         for word in words:
             cleaned = re.sub(r"[^A-Z]", "", word)
-            if 2 <= len(cleaned) <= 5 and cleaned.isupper():
+            if 2 <= len(cleaned) <= 5 and cleaned not in self.TICKER_BLOCKLIST:
                 return cleaned
-        return "AAPL"
+        return ""
 
     async def save_audit(self, user_id: str, llm_result: dict, idea: str) -> int:
         await self.init_db()

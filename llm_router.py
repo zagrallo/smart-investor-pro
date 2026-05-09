@@ -48,12 +48,15 @@ MOCK_MEMO = json.dumps({
 
 class LLMRouter:
     def __init__(self):
+        has_key = bool(settings.LLM_API_KEY or settings.DEEPSEEK_API_KEY)
         self.client = AsyncOpenAI(
             api_key=settings.LLM_API_KEY or settings.DEEPSEEK_API_KEY or "sk-mock-key",
-            base_url=settings.LLM_BASE_URL or settings.DEEPSEEK_BASE_URL
-        )
+            base_url=settings.LLM_BASE_URL or settings.DEEPSEEK_BASE_URL,
+            timeout=30.0,
+            max_retries=0,
+        ) if has_key else None
         self.model = settings.LLM_MODEL or settings.DEEPSEEK_MODEL
-        self._is_mock = (settings.LLM_API_KEY or settings.DEEPSEEK_API_KEY) is None
+        self._is_mock = not has_key
 
     async def analyze(self, prompt: str, system_prompt: str, response_format: Type[T] | None = None) -> dict:
         if self._is_mock:
@@ -68,25 +71,35 @@ class LLMRouter:
                 "model": self.model,
                 "messages": messages,
                 "temperature": 0.3,
-                "max_tokens": 2000
+                "max_tokens": 4000
             }
             if response_format:
-                messages[-1]["content"] += (
-                    "\n\nRespond ONLY with a single JSON object. Use EXACTLY these field names (no substitutes, no extra fields):\n"
-                    "company_name (string), sector (string), investment_thesis (string),\n"
-                    "financial_highlights (JSON object with metrics, NOT a string),\n"
-                    "market_opportunity (string), competitive_advantages (array of strings),\n"
-                    "key_risks (array of objects, each with: category, level [LOW/MEDIUM/HIGH/CRITICAL], description, mitigation),\n"
-                    "recommended_action (BUY/HOLD/PASS/NEED_MORE_INFO),\n"
-                    "confidence_score (float 0.0-1.0)\n\n"
-                    "Example:\n"
-                    '{"company_name":"Apple Inc","sector":"Technology","investment_thesis":"Thesis text...",'
-                    '"financial_highlights":{"pe_ratio":28.5,"market_cap":3200000000000},'
-                    '"market_opportunity":"Large TAM",'
-                    '"competitive_advantages":["Ecosystem lock-in"],'
-                    '"key_risks":[{"category":"Regulatory","level":"MEDIUM","description":"Risk text","mitigation":"Plan text"}],'
-                    '"recommended_action":"BUY","confidence_score":0.82}'
-                )
+                schema_name = response_format.__name__
+                if schema_name == "StartupInvestmentMemo":
+                    messages[-1]["content"] += (
+                        "\n\nRespond ONLY with valid JSON matching the StartupInvestmentMemo schema. "
+                        "Use exactly these fields: company_name, sector, stage, location, "
+                        "recommendation (STRONG_INVEST/INVEST/CONDITIONAL_INVEST/NEED_MORE_INFO/PASS), "
+                        "confidence_score (0.0-1.0), investment_thesis, key_strengths (array), "
+                        "key_risks (array of {category, severity, description, mitigation}), "
+                        "metrics (object with: tam_eur, sam_eur, som_eur_year3, pricing_tiers, "
+                        "projected_arr_year1, projected_mrr_year1, target_customers_year1, "
+                        "gross_margin_target, cac_target, ltv_target, ltv_cac_ratio, "
+                        "payback_months, churn_rate_monthly, funding_ask_min, funding_ask_max, "
+                        "founder_count), "
+                        "requested_documents (array), critical_questions (array). "
+                        "Use null for missing values, NEVER invent numbers."
+                    )
+                else:
+                    messages[-1]["content"] += (
+                        "\n\nRespond ONLY with a single JSON object. "
+                        "Fields: company_name, sector, investment_thesis, "
+                        "financial_highlights (object), market_opportunity, "
+                        "competitive_advantages (array), "
+                        "key_risks (array of {category, level, description, mitigation}), "
+                        "recommended_action (BUY/HOLD/PASS/NEED_MORE_INFO), "
+                        "confidence_score (0.0-1.0)."
+                    )
 
             response = await self.client.chat.completions.create(**kwargs)
             content = response.choices[0].message.content
@@ -97,8 +110,13 @@ class LLMRouter:
             if response_format:
                 parsed = parse_with_recovery(content, response_format)
                 if parsed is None:
-                    logger.error("All JSON parse strategies failed for response_format")
-                    parsed = response_format.model_validate({})
+                    preview = content[:500] if content else "EMPTY"
+                    logger.error("All JSON parse strategies failed for %s. Preview: %s", response_format.__name__, preview)
+                    try:
+                        parsed = response_format.model_validate({})
+                    except Exception as e:
+                        logger.warning("Empty model_validate also failed: %s", e)
+                        parsed = None
 
             return {
                 "success": True,

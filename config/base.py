@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "https://api.deepseek.com/v1"
     LLM_MODEL: str = "deepseek-chat"
 
+    GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    DEFAULT_PROVIDER: str = "deepseek"
+    PARALLEL_ANALYSIS: bool = False
     LLM_COST_BUDGET: float = 0.50
     USE_MOCK_DATA: bool = True
 
@@ -30,6 +34,11 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "json"
 
     MAX_REQUESTS_PER_MINUTE: int = 5
+
+    REDIS_URL: str = ""
+    REDIS_TTL_MARKET: int = 86400
+    REDIS_TTL_LLM: int = 3600
+    CACHE_ENABLED: bool = True
 
 
 def get_settings() -> Settings:

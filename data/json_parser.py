@@ -35,13 +35,16 @@ def _remap_fields(data: dict) -> dict:
     # If financial_highlights is a string, wrap in a dict
     if "financial_highlights" in data and isinstance(data["financial_highlights"], str):
         data["financial_highlights"] = {"summary": data.pop("financial_highlights")}
+    # Normalize stage: lowercase + "pre-seed" → "pre_seed", "series a" → "series_a"
+    if "stage" in data and isinstance(data["stage"], str):
+        data["stage"] = data["stage"].lower().replace("-", "_").replace(" ", "_")
     return data
 
 
 def _remap_nested(data: dict) -> dict:
     """Remap fields inside nested structures like key_risks. Also fix case mismatches (Medium→MEDIUM)."""
     risk_aliases = {"category": ["type", "area", "risk_type", "name"],
-                    "level": ["severity", "risk_level", "priority"],
+                    "severity": ["level", "risk_level", "priority"],
                     "description": ["detail", "desc", "text", "explanation"],
                     "mitigation": ["mitigate", "action", "countermeasure", "plan"]}
     risks = data.get("key_risks") or data.get("risks") or []
@@ -53,8 +56,8 @@ def _remap_nested(data: dict) -> dict:
                     for alias in aliases:
                         if alias in r and canon not in r:
                             r[canon] = r.pop(alias)
-                if "level" in r and isinstance(r["level"], str):
-                    r["level"] = r["level"].upper()
+                if "severity" in r and isinstance(r["severity"], str):
+                    r["severity"] = r["severity"].upper()
                 mapped_risks.append(r)
         data["key_risks"] = mapped_risks
     return data
@@ -106,6 +109,6 @@ def parse_with_recovery(content: str, model_class):
             data = _remap_nested(data)
             return model_class.model_validate(data)
     except Exception as e:
-        logger.warning("Field remapping failed: %s" if "Field" in str(e) else "JSON remap error", e)
+        logger.warning("Field remapping failed: %s", e) if "Field" in str(e) else logger.warning("JSON remap error: %s", e)
 
     return None

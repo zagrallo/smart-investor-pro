@@ -71,6 +71,51 @@ details{background:var(--bg);border-radius:8px;padding:.5rem 1rem;margin-top:.5r
 details summary{cursor:pointer;font-size:.8rem;color:var(--muted);padding:.3rem 0}
 details[open] summary{margin-bottom:.5rem}
 .toast{position:fixed;bottom:2rem;right:2rem;background:var(--card);border:1px solid var(--border);padding:1rem 1.5rem;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.5);transform:translateY(120%);opacity:0;transition:.3s;max-width:400px;z-index:999;border-left:3px solid var(--accent)}
+.dancer{display:inline-flex;align-items:center;gap:4px;margin-left:12px;position:relative;cursor:default}
+.dancer-body{position:relative;width:32px;height:32px}
+.dancer .head{width:18px;height:18px;background:var(--accent);border-radius:50%;position:absolute;top:0;left:7px;transition:.3s;z-index:2}
+.dancer .head .eye{width:3px;height:3px;background:#0a0a14;border-radius:50%;position:absolute}
+.dancer .head .eye.l{top:5px;left:4px}
+.dancer .head .eye.r{top:5px;right:4px}
+.dancer .head .mouth{width:6px;height:2px;background:#0a0a14;border-radius:2px;position:absolute;bottom:3px;left:6px;transition:.3s}
+.dancer .torso{width:14px;height:10px;background:var(--accent2);border-radius:4px;position:absolute;top:16px;left:9px;z-index:1}
+.dancer .arm{width:4px;height:14px;background:var(--accent);border-radius:3px;position:absolute;top:14px;transform-origin:top center}
+.dancer .arm.l{left:1px}
+.dancer .arm.r{right:1px}
+.dancer .leg{width:4px;height:12px;background:var(--accent2);border-radius:3px;position:absolute;top:24px;transform-origin:top center}
+.dancer .leg.l{left:10px}
+.dancer .leg.r{right:10px}
+/* Idle animation - gentle float */
+.dancer.idle{animation:glide 2.5s ease-in-out infinite}
+.dancer.idle .head{animation:tilt 3s ease-in-out infinite}
+.dancer.idle .arm.l{animation:armSwayL 3s ease-in-out infinite}
+.dancer.idle .arm.r{animation:armSwayR 3s ease-in-out infinite}
+.dancer.idle .leg.l{animation:legBounceL 3s ease-in-out infinite}
+.dancer.idle .leg.r{animation:legBounceR 3s ease-in-out infinite}
+.dancer.idle .mouth{border-radius:2px}
+/* Dancing animation - energetic */
+.dancer.dancing{animation:danceBounce .4s ease-in-out infinite}
+.dancer.dancing .head{animation:headBang .35s ease-in-out infinite}
+.dancer.dancing .mouth{width:8px;height:4px;border-radius:0 0 4px 4px;background:#0a0a14;bottom:2px;left:5px}
+.dancer.dancing .arm.l{animation:armPumpL .25s ease-in-out infinite}
+.dancer.dancing .arm.r{animation:armPumpR .3s ease-in-out infinite}
+.dancer.dancing .leg.l{animation:legKickL .28s ease-in-out infinite}
+.dancer.dancing .leg.r{animation:legKickR .35s ease-in-out infinite}
+@keyframes glide{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes tilt{0%,100%{transform:rotate(0deg)}25%{transform:rotate(-8deg)}75%{transform:rotate(8deg)}}
+@keyframes armSwayL{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(-25deg)}}
+@keyframes armSwayR{0%,100%{transform:rotate(10deg)}50%{transform:rotate(25deg)}}
+@keyframes legBounceL{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(-15deg)}}
+@keyframes legBounceR{0%,100%{transform:rotate(5deg)}50%{transform:rotate(15deg)}}
+@keyframes danceBounce{0%,100%{transform:translateY(0) scaleY(1)}25%{transform:translateY(-6px) scaleY(.9)}50%{transform:translateY(0) scaleY(1)}75%{transform:translateY(-3px) scaleY(.95)}}
+@keyframes headBang{0%,100%{transform:rotate(0deg) translateY(0)}25%{transform:rotate(-12deg) translateY(-2px)}50%{transform:rotate(0deg) translateY(0)}75%{transform:rotate(12deg) translateY(-2px)}}
+@keyframes armPumpL{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(-60deg)}}
+@keyframes armPumpR{0%,100%{transform:rotate(10deg)}50%{transform:rotate(60deg)}}
+@keyframes legKickL{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(20deg)}}
+@keyframes legKickR{0%,100%{transform:rotate(5deg)}50%{transform:rotate(-20deg)}}
+/* Tooltip */
+.dancer-tip{position:absolute;top:-28px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border);padding:4px 10px;border-radius:6px;font-size:.7rem;white-space:nowrap;color:var(--muted);opacity:0;transition:.3s;pointer-events:none}
+.dancer:hover .dancer-tip{opacity:1}
 .toast.show{transform:translateY(0);opacity:1}
 .toast.error{border-left-color:var(--err)}
 .toast .t-title{font-weight:600;margin-bottom:4px;font-size:.9rem}
@@ -100,6 +145,18 @@ details[open] summary{margin-bottom:.5rem}
   <div class="nav-status">
     <span class="dot" id="status-dot"></span>
     <span id="status-text">Verbindung prüfen...</span>
+    <div class="dancer idle" id="dancer">
+      <div class="dancer-body">
+        <div class="head">
+          <span class="eye l"></span><span class="eye r"></span>
+          <span class="mouth"></span>
+        </div>
+        <div class="torso"></div>
+        <div class="arm l"></div><div class="arm r"></div>
+        <div class="leg l"></div><div class="leg r"></div>
+      </div>
+      <span class="dancer-tip" id="dancer-tip">System bereit</span>
+    </div>
   </div>
 </div>
 
@@ -108,27 +165,49 @@ details[open] summary{margin-bottom:.5rem}
 <!-- LEFT: Main Content -->
 <div>
   <div class="card" style="margin-bottom:1.5rem">
-    <div class="card-title">&#128200; Investment-Analyse</div>
-
-    <div class="tabs">
-      <div class="tab active" data-tab="text" onclick="switchTab(this)">&#128221; Text</div>
-      <div class="tab" data-tab="file" onclick="switchTab(this)">&#128196; .md Datei</div>
+    <div class="card-title">
+      &#128200; Investment-Analyse
+      <span style="margin-left:auto;display:flex;gap:4px;background:var(--bg);border-radius:6px;padding:2px">
+        <button class="btn btn-sm" style="border-radius:4px;padding:4px 12px;font-size:.75rem" id="mode-equity" onclick="switchMode('equity')">&#127881; Aktien</button>
+        <button class="btn btn-sm" style="border-radius:4px;padding:4px 12px;font-size:.75rem;background:var(--accent);color:#000" id="mode-startup" onclick="switchMode('startup')">&#128640; Startup</button>
+      </span>
     </div>
 
-    <div class="tab-content active" id="tab-text">
-      <div class="input-group">
-        <label for="idea-input">Unternehmen oder Aktien-Idee</label>
-        <textarea id="idea-input" placeholder="z.B. Analysiere Apple Inc (AAPL) als langfristiges Investment&#10;oder: Analysiere SAP SE für das DACH-Software-Portfolio">Analysiere Apple Inc (AAPL) als langfristiges Investment</textarea>
+    <div id="mode-equity-ui">
+      <div class="tabs">
+        <div class="tab active" data-tab="text-equity" onclick="switchTab(this)">&#128221; Text</div>
+      </div>
+      <div class="tab-content active" id="tab-text-equity">
+        <div class="input-group">
+          <label for="idea-input">Unternehmen oder Aktien-Idee</label>
+          <textarea id="idea-input" placeholder="z.B. Analysiere Apple Inc (AAPL) als langfristiges Investment&#10;oder: Analysiere SAP SE f&uuml;r das DACH-Software-Portfolio">Analysiere Apple Inc (AAPL) als langfristiges Investment</textarea>
+        </div>
       </div>
     </div>
 
-    <div class="tab-content" id="tab-file">
-      <div class="dropzone" id="dropzone" onclick="$('file-input').click()" ondragover="this.classList.add('dragover');event.preventDefault()" ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-        <p>Markdown-Datei hier ablegen oder klicken zum Auswählen</p>
-        <div id="file-name" class="fname"></div>
+    <div id="mode-startup-ui" style="display:none">
+      <div class="tabs">
+        <div class="tab active" data-tab="text-startup" onclick="switchTab(this)">&#128221; Text</div>
+        <div class="tab" data-tab="file-startup" onclick="switchTab(this)">&#128196; .md Datei</div>
       </div>
-      <input type="file" id="file-input" accept=".md" style="display:none" onchange="handleFileSelect(event)">
+      <div class="tab-content active" id="tab-text-startup">
+        <div class="input-group">
+          <label for="startup-name">Startup-Name</label>
+          <input type="text" id="startup-name" placeholder="z.B. TechStart GmbH" style="text-transform:uppercase">
+        </div>
+        <div class="input-group">
+          <label for="startup-doc">Dokument (Business Plan / Investor Deck)</label>
+          <textarea id="startup-doc" placeholder="F&uuml;ge den Text aus dem Business-Plan hier ein oder lade eine .md Datei hoch..." style="min-height:120px"></textarea>
+        </div>
+      </div>
+      <div class="tab-content" id="tab-file-startup">
+        <div class="dropzone" id="dropzone-startup" onclick="$('startup-file-input').click()" ondragover="this.classList.add('dragover');event.preventDefault()" ondragleave="this.classList.remove('dragover')" ondrop="handleStartupDrop(event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          <p>Investor-Dokument (.md) hier ablegen</p>
+          <div id="startup-file-name" class="fname"></div>
+        </div>
+        <input type="file" id="startup-file-input" accept=".md" style="display:none" onchange="handleStartupFileSelect(event)">
+      </div>
     </div>
 
     <div class="btn-row">
@@ -193,6 +272,7 @@ details[open] summary{margin-bottom:.5rem}
 const API = window.location.origin;
 let JWT = null;
 let LAST_MEMO = null;
+let CURRENT_MODE = 'startup';
 
 function $(id){return document.getElementById(id)}
 
@@ -218,6 +298,27 @@ function setStatus(dot, text){
   $('status-text').textContent=text;
 }
 
+function switchMode(mode){
+  CURRENT_MODE = mode;
+  document.getElementById('mode-equity').style.background = mode==='equity' ? 'var(--accent)' : 'transparent';
+  document.getElementById('mode-equity').style.color = mode==='equity' ? '#000' : 'var(--muted)';
+  document.getElementById('mode-startup').style.background = mode==='startup' ? 'var(--accent)' : 'transparent';
+  document.getElementById('mode-startup').style.color = mode==='startup' ? '#000' : 'var(--muted)';
+  document.getElementById('mode-equity-ui').style.display = mode==='equity' ? 'block' : 'none';
+  document.getElementById('mode-startup-ui').style.display = mode==='startup' ? 'block' : 'none';
+}
+function startDance(msg){
+  const d=$('dancer');
+  d.className='dancer dancing';
+  $('dancer-tip').textContent=msg||'🤖 Analyse läuft...';
+}
+function stopDance(msg){
+  const d=$('dancer');
+  d.className='dancer idle';
+  $('dancer-tip').textContent=msg||'Fertig!';
+  setTimeout(()=>{$('dancer-tip').textContent='System bereit'},4000);
+}
+
 async function init(){
   try{
     const r=await api('/health');
@@ -238,38 +339,43 @@ async function init(){
   }
 }
 
+function enableBtn(btn){
+  btn.disabled=false;btn.innerHTML='&#9654; Analyse starten';
+}
+
 async function runAnalysis(){
-  const isFileTab = document.querySelector('.tab[data-tab="file"]').classList.contains('active');
+  const btn=$('btn-analyze');
+
+  if(CURRENT_MODE === 'startup'){
+    await runStartupAnalysis();
+    return;
+  }
 
   // Get token first
   if(!JWT){
     const tr=await api('/auth/token',{method:'POST'});
-    if(!tr.ok){showToast('Auth-Fehler','Token konnte nicht geholt werden.',true);return}
+    if(!tr.ok){showToast('Auth-Fehler','Token konnte nicht geholt werden. Server läuft?',true);enableBtn(btn);return}
     JWT=tr.data.access_token;
   }
 
-  const btn=$('btn-analyze');
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Analysiere...';
   $('empty-state').style.display='none';
   $('audit-content').style.display='none';
+  $('result-content').innerHTML='';
+  startDance('DeepSeek denkt nach...');
+
+  // Timeout warning after 45s
+  let timeoutWarn = setTimeout(()=>{
+    showToast('Dauert länger...','DeepSeek arbeitet noch, bitte warten. Maximal 90s.',false);
+    startDance('Immer am Rechnen...');
+  },45000);
 
   try{
-    let r;
+    const idea=$('idea-input').value.trim();
+    if(!idea){showToast('Eingabe fehlt','Bitte eine Investment-Idee eingeben.',true);enableBtn(btn);return}
+    const r=await api('/v1/analyze',{method:'POST',body:JSON.stringify({idea})});
 
-    if(isFileTab){
-      // File upload
-      if(!UPLOADED_FILE){showToast('Keine Datei','Bitte eine .md Datei auswählen.',true);btn.disabled=false;btn.innerHTML='&#9654; Analyse starten';return}
-      const form=new FormData();form.append('file',UPLOADED_FILE);
-      r=await fetch(API+'/v1/upload',{method:'POST',headers:{'Authorization':'Bearer '+JWT},body:form});
-      const txt=await r.text();
-      try{r={ok:r.ok,status:r.status,data:JSON.parse(txt)}}
-      catch{r={ok:false,status:r.status,data:txt}}
-    }else{
-      // Text
-      const idea=$('idea-input').value.trim();
-      if(!idea){showToast('Eingabe fehlt','Bitte eine Investment-Idee eingeben.',true);btn.disabled=false;btn.innerHTML='&#9654; Analyse starten';return}
-      r=await api('/v1/analyze',{method:'POST',body:JSON.stringify({idea})});
-    }
+    clearTimeout(timeoutWarn);
 
     if(r.ok && r.data?.status==='success'){
       const d=r.data.data;
@@ -277,14 +383,18 @@ async function runAnalysis(){
       renderResult(d);
       $('btn-pdf').disabled=false;
       addHistory(d.memo.company_name, d.memo.recommended_action, d.cost_usd);
+      stopDance(d.memo.recommended_action+' – '+d.memo.company_name);
     }else{
       $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${r.data?.detail||'Analyse fehlgeschlagen'}</p></div>`;
+      stopDance('Fehlgeschlagen');
     }
   }catch(e){
+    clearTimeout(timeoutWarn);
     $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${e.message}</p></div>`;
+    stopDance('Fehler');
   }
   $('result-content').style.display='block';
-  btn.disabled=false;btn.innerHTML='&#9654; Analyse starten';
+  enableBtn(btn);
 }
 
 function renderResult(d){
@@ -341,6 +451,191 @@ function renderResult(d){
     </div>`;
 }
 
+async function runStartupAnalysis(){
+  const btn=$('btn-analyze');
+  const isFileTab = document.querySelector('#mode-startup-ui .tab.active')?.dataset?.tab === 'file-startup';
+
+  if(!JWT){
+    const tr=await api('/auth/token',{method:'POST'});
+    if(!tr.ok){showToast('Auth-Fehler','Token konnte nicht geholt werden.',true);enableBtn(btn);return}
+    JWT=tr.data.access_token;
+  }
+
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Startup DD...';
+  $('empty-state').style.display='none';
+  $('audit-content').style.display='none';
+  $('result-content').innerHTML='';
+  startDance('VC-Analyse laeuft...');
+
+  let timeoutWarn = setTimeout(()=>{
+    showToast('Dauert laenger...','DeepSeek arbeitet noch am Startup-Report. Maximal 120s.',false);
+    startDance('DeepSeek praeft...');
+  },45000);
+
+  try{
+    let r;
+
+    if(isFileTab){
+      if(!UPLOADED_STARTUP_FILE){showToast('Keine Datei','Bitte .md Datei auswaehlen.',true);enableBtn(btn);return}
+      const form=new FormData();form.append('file',UPLOADED_STARTUP_FILE);
+      try{
+        r=await fetch(API+'/v1/upload/startup',{method:'POST',headers:{'Authorization':'Bearer '+JWT},body:form});
+        const txt=await r.text();
+        try{r={ok:r.ok,status:r.status,data:JSON.parse(txt)}}
+        catch{r={ok:false,status:r.status,data:txt}}
+      }catch(netErr){
+        showToast('Netzwerkfehler','Server nicht erreichbar.',true);enableBtn(btn);return
+      }
+    }else{
+      const company=$('startup-name').value.trim();
+      const doc=$('startup-doc').value.trim();
+      if(!company){showToast('Name fehlt','Bitte Startup-Name eingeben.',true);enableBtn(btn);return}
+      if(!doc){showToast('Dokument fehlt','Bitte Dokumenttext einfuegen oder Datei hochladen.',true);enableBtn(btn);return}
+      r=await api('/v1/analyze/startup',{method:'POST',body:JSON.stringify({company,document:doc})});
+    }
+
+    clearTimeout(timeoutWarn);
+
+    if(r.ok && r.data?.status==='success'){
+      const d=r.data.data;
+      LAST_MEMO=d.memo;
+      renderStartupResult(d);
+      $('btn-pdf').disabled=false;
+      stopDance(d.memo.recommendation+' – '+d.memo.company_name);
+    }else{
+      $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${r.data?.detail||'Startup-Analyse fehlgeschlagen'}</p></div>`;
+      stopDance('Fehlgeschlagen');
+    }
+  }catch(e){
+    clearTimeout(timeoutWarn);
+    $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${e.message}</p></div>`;
+    stopDance('Fehler');
+  }
+  $('result-content').style.display='block';
+  enableBtn(btn);
+}
+
+function renderStartupResult(d){
+  const m=d.memo;
+  const recClass = {
+    STRONG_INVEST:'badge-buy', INVEST:'badge-buy',
+    CONDITIONAL_INVEST:'badge-hold', NEED_MORE_INFO:'badge-info', PASS:'badge-pass'
+  }[m.recommendation]||'badge-info';
+
+  const sevClass={HIGH:'risk-high',MEDIUM:'risk-medium',LOW:'risk-low',CRITICAL:'risk-critical'};
+
+  const metrics=m.metrics||{};
+  const finItems = [
+    {l:'TAM', v:metrics.tam_eur ? '€'+(metrics.tam_eur/1e6).toFixed(0)+' Mio' : '-'},
+    {l:'SAM', v:metrics.sam_eur ? '€'+(metrics.sam_eur/1e6).toFixed(0)+' Mio' : '-'},
+    {l:'Pricing', v:metrics.pricing_tiers?.length ? metrics.pricing_tiers.map(t=>t.price_eur+'€').join('/') : '-'},
+    {l:'ARR Y1', v:metrics.projected_arr_year1 ? '€'+(metrics.projected_arr_year1/1e3).toFixed(0)+'K' : '-'},
+    {l:'MRR Y1', v:metrics.projected_mrr_year1 ? '€'+metrics.projected_mrr_year1.toFixed(0) : '-'},
+    {l:'CAC', v:metrics.cac_target ? '€'+metrics.cac_target.toFixed(0) : '-'},
+    {l:'LTV', v:metrics.ltv_target ? '€'+metrics.ltv_target.toFixed(0) : '-'},
+    {l:'LTV/CAC', v:metrics.ltv_cac_ratio ? metrics.ltv_cac_ratio.toFixed(1)+'x' : '-'},
+    {l:'Payback', v:metrics.payback_months ? metrics.payback_months.toFixed(1)+' Mon' : '-'},
+    {l:'Churn', v:metrics.churn_rate_monthly ? (metrics.churn_rate_monthly*100).toFixed(1)+'%' : '-'},
+    {l:'Kunden Y1', v:metrics.target_customers_year1 ? metrics.target_customers_year1 : '-'},
+    {l:'Funding', v:metrics.funding_ask_min ? '€'+(metrics.funding_ask_min/1e3).toFixed(0)+'K' : '-'},
+  ];
+
+  $('result-content').innerHTML=`
+    <div class="card">
+      <div class="result-header">
+        <h2>${m.company_name||'?'}</h2>
+        <span class="badge ${recClass}">${m.recommendation||'N/A'}</span>
+        <span style="font-size:.9rem;color:var(--muted)">${(m.confidence_score*100).toFixed(0)}% Konfidenz</span>
+        <span style="font-size:.75rem;background:rgba(108,99,255,.15);color:var(--accent2);padding:2px 8px;border-radius:4px">Startup DD</span>
+      </div>
+
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem">
+        ${m.sector||''} | ${m.stage||'Pre-Seed'} | ${m.location||'DACH'}
+      </div>
+
+      <div class="metrics">
+        ${finItems.map(i=>`<div class="metric"><div class="val">${i.v}</div><div class="lbl">${i.l}</div></div>`).join('')}
+      </div>
+
+      <div class="thesis">${m.investment_thesis||'Keine Analyse.'}</div>
+
+      ${m.market_dynamics ? `
+      <div style="margin-bottom:1rem">
+        <div style="font-size:.8rem;color:var(--accent2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Marktdynamik</div>
+        <div style="font-size:.9rem;line-height:1.6;background:var(--bg);border-radius:8px;padding:12px">${m.market_dynamics}</div>
+      </div>` : ''}
+
+      ${m.competitive_analysis ? `
+      <div style="margin-bottom:1rem">
+        <div style="font-size:.8rem;color:var(--accent2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Wettbewerbsvorteil</div>
+        <div style="font-size:.9rem;line-height:1.6;background:var(--bg);border-radius:8px;padding:12px">${m.competitive_analysis}</div>
+      </div>` : ''}
+
+      ${m.strategic_advice ? `
+      <div style="margin-bottom:1rem;background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.15);border-radius:8px;padding:12px">
+        <div style="font-size:.8rem;color:var(--accent);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Strategische Empfehlung</div>
+        <div style="font-size:.9rem;line-height:1.6">${m.strategic_advice}</div>
+      </div>` : ''}
+
+      <div style="margin-bottom:1rem">
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Staerken</div>
+        <ul style="padding-left:1.2rem;font-size:.9rem;line-height:1.8">
+          ${(m.key_strengths||[]).map(s=>`<li>${s}</li>`).join('')||'<li style="color:var(--muted)">Keine</li>'}
+        </ul>
+      </div>
+
+      <div style="margin-bottom:1rem">
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Risiken</div>
+        <div class="risks">
+          ${(m.key_risks||[]).map(r=>`
+            <span class="risk-tag ${sevClass[r.severity]||'risk-medium'}" title="${r.description}">
+              ${r.severity}: ${r.category}
+            </span>
+          `).join('')||'<span style="color:var(--muted);font-size:.85rem">Keine identifiziert</span>'}
+        </div>
+      </div>
+
+      ${m.requested_documents?.length ? `
+      <div style="margin-bottom:1rem;background:rgba(255,165,2,.05);border:1px solid rgba(255,165,2,.15);border-radius:8px;padding:12px">
+        <div style="font-size:.8rem;color:var(--warn);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Angeforderte Dokumente</div>
+        <ul style="padding-left:1.2rem;font-size:.85rem;line-height:1.7">
+          ${m.requested_documents.map(d=>`<li>${d}</li>`).join('')}
+        </ul>
+      </div>` : ''}
+
+      ${m.critical_questions?.length ? `
+      <div style="margin-bottom:1rem">
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Offene Fragen</div>
+        <ul style="padding-left:1.2rem;font-size:.85rem;line-height:1.7">
+          ${m.critical_questions.map(q=>`<li>${q}</li>`).join('')}
+        </ul>
+      </div>` : ''}
+
+      <details>
+        <summary>Rohdaten (JSON)</summary>
+        <pre class="json">${JSON.stringify(m,null,2)}</pre>
+      </details>
+    </div>`;
+}
+
+let UPLOADED_STARTUP_FILE = null;
+
+function handleStartupDrop(e){
+  e.preventDefault();$('dropzone').classList.remove('dragover');
+  const file=e.dataTransfer.files[0];if(file)setStartupFile(file);
+}
+function handleStartupFileSelect(e){
+  const file=e.target.files[0];if(file)setStartupFile(file);
+}
+function setStartupFile(file){
+  if(!file.name.endsWith('.md')){showToast('Falsches Format','Nur .md Dateien.',true);return}
+  UPLOADED_STARTUP_FILE=file;
+  const name=file.name.replace('-INVESTOR-DOKUMENT.md','').replace('.md','').trim();
+  $('startup-file-name').textContent=file.name+' ('+(file.size/1024).toFixed(1)+' KB)';
+  if(name && !$('startup-name').value) $('startup-name').value=name;
+  showToast('Datei geladen',file.name);
+}
+
 async function downloadPDF(){
   if(!LAST_MEMO){showToast('Fehler','Keine Analyse zum Download.',true);return}
   if(!JWT){
@@ -350,7 +645,13 @@ async function downloadPDF(){
   const btn=$('btn-pdf');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> PDF...';
   try{
     const name=LAST_MEMO.company_name||'Investment';
-    const r=await api(`/v1/report/pdf?idea=Analyze+${encodeURIComponent(name)}`);
+    let r;
+    if(CURRENT_MODE==='startup'){
+      const resp=await fetch(API+'/v1/report/startup-pdf',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+JWT},body:JSON.stringify({memo:LAST_MEMO})});
+      r={ok:resp.ok,status:resp.status,blob:await resp.blob()};
+    }else{
+      r=await api(`/v1/report/pdf?idea=Analyze+${encodeURIComponent(name)}`);
+    }
     if(r.ok&&r.blob){
       const url=URL.createObjectURL(r.blob);
       const a=document.createElement('a');a.href=url;a.download=`${name.replace(/\s+/g,'_')}_memo.pdf`;a.click();
@@ -391,27 +692,13 @@ async function loadAudit(){
   $('audit-content').style.display='block';
 }
 
-let UPLOADED_FILE = null;
-
 function switchTab(el){
   document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('tab-'+el.dataset.tab).classList.add('active');
-}
-
-function handleDrop(e){
-  e.preventDefault();$('dropzone').classList.remove('dragover');
-  const file=e.dataTransfer.files[0];if(file)setFile(file);
-}
-function handleFileSelect(e){
-  const file=e.target.files[0];if(file)setFile(file);
-}
-function setFile(file){
-  if(!file.name.endsWith('.md')){showToast('Falsches Format','Nur .md Dateien werden unterstützt.',true);return}
-  UPLOADED_FILE=file;
-  $('file-name').textContent='📄 '+file.name+' ('+(file.size/1024).toFixed(1)+' KB)';
-  showToast('Datei geladen',file.name);
+  const id = 'tab-'+el.dataset.tab;
+  const target = document.getElementById(id);
+  if(target) target.classList.add('active');
 }
 
 function addHistory(company, action, cost){
@@ -441,6 +728,7 @@ setInterval(async()=>{
   }
 },25*60*1000); // refresh every 25 min
 
+switchMode('startup');
 init();
 </script>
 </body>

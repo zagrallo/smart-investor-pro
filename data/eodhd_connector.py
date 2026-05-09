@@ -59,19 +59,25 @@ class FreeDataProvider:
             logger.debug("Free mode: using mock data for %s", base)
             return self._mock_data(base)
 
-        # Versuch 1: yfinance
-        result = await self._try_yfinance(base)
-        if result:
+        if settings.CACHE_ENABLED:
+            from startup_dd.cache import cached
+            cache_key = f"market:{base}"
+            result, hit = await cached(cache_key, settings.REDIS_TTL_MARKET, self._fetch_live, base)
+            if hit:
+                logger.debug("Market data cache HIT for %s", base)
             return result
 
-        # Versuch 2: SEC EDGAR (nur US-Ticker)
-        result = await self._try_sec_edgar(base)
+        return await self._fetch_live(base)
+
+    async def _fetch_live(self, ticker: str) -> EODHDFinancials | None:
+        result = await self._try_yfinance(ticker)
         if result:
             return result
-
-        # Fallback: Mock
-        logger.warning("All free providers failed for %s. Using mock.", base)
-        return self._mock_data(base)
+        result = await self._try_sec_edgar(ticker)
+        if result:
+            return result
+        logger.warning("All free providers failed for %s. Using mock.", ticker)
+        return self._mock_data(ticker)
 
     async def _try_yfinance(self, ticker: str) -> Optional[EODHDFinancials]:
         try:
