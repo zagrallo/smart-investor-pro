@@ -51,6 +51,8 @@ async def lifespan(app_instance: FastAPI):
     logger.info("Started", extra={"version": settings.VERSION, "mock": settings.USE_MOCK_DATA, "env": settings.APP_ENV, "cache_enabled": settings.CACHE_ENABLED})
     yield
     try:
+        from db import close_pool
+        await close_pool()
         from startup_dd.cache import get_cache
         await get_cache().close()
         await compliance_engine.close()
@@ -284,9 +286,9 @@ async def analyze_startup_v1(
     logger.info("Startup DD request", extra={"user": user["id"], "company": request.company, "lang": lang})
     result = await startup_agent.analyze(request.company, request.document, session_id=user["id"], lang=lang)
     store = get_session_store()
-    sid = store.create_session(user["id"], request.company)
-    store.add_document(sid, "input", request.document)
-    store.save_result(sid, result)
+    sid = await store.create_session(user["id"], request.company)
+    await store.add_document(sid, "input", request.document)
+    await store.save_result(sid, result)
     return {"status": "success", "data": result, "session_id": sid, "mode": "startup_dd", "lang": lang}
 
 
@@ -305,9 +307,9 @@ async def upload_startup_v1(
     logger.info("Startup DD upload", extra={"user": user["id"], "file": file.filename, "size": len(content)})
     result = await startup_agent.analyze(company_name, content, session_id=user["id"])
     store = get_session_store()
-    sid = store.create_session(user["id"], company_name)
-    store.add_document(sid, file.filename, content)
-    store.save_result(sid, result)
+    sid = await store.create_session(user["id"], company_name)
+    await store.add_document(sid, file.filename, content)
+    await store.save_result(sid, result)
     return {"status": "success", "data": result, "session_id": sid, "file": file.filename, "mode": "startup_dd"}
 
 
@@ -327,7 +329,7 @@ async def session_create(
     user: dict = Depends(get_current_user)
 ):
     store = get_session_store()
-    session_id = store.create_session(user["id"], request.company)
+    session_id = await store.create_session(user["id"], request.company)
     return {"session_id": session_id, "company": request.company, "document_count": 0, "lang": request.lang}
 
 
@@ -338,17 +340,17 @@ async def session_add_document(
     user: dict = Depends(get_current_user)
 ):
     store = get_session_store()
-    session = store.get_session(session_id)
+    session = await store.get_session(session_id)
     if not session:
         raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
     if session.user_id != user["id"]:
         raise HTTPException(403, "Diese Session gehoert einem anderen User.")
     if not request.name or not request.content:
         raise HTTPException(400, "Name und Content duerfen nicht leer sein.")
-    ok = store.add_document(session_id, request.name, request.content)
+    ok = await store.add_document(session_id, request.name, request.content)
     if not ok:
         raise HTTPException(500, "Dokument konnte nicht hinzugefuegt werden.")
-    return store.to_dict(store.get_session(session_id))
+    return await store.to_dict(await store.get_session(session_id))
 
 
 @v1.post("/session/{session_id}/upload")
@@ -360,7 +362,7 @@ async def session_upload_document(
     if not file.filename or not file.filename.lower().endswith(".md"):
         raise HTTPException(400, "Nur .md Dateien werden unterstuetzt.")
     store = get_session_store()
-    session = store.get_session(session_id)
+    session = await store.get_session(session_id)
     if not session:
         raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
     if session.user_id != user["id"]:
@@ -373,11 +375,11 @@ async def session_upload_document(
     if not session.company_name:
         guessed = name.replace("-INVESTOR-DOKUMENT.md", "").replace(".md", "").strip()
         if guessed:
-            store.update_company_name(session_id, guessed)
-    ok = store.add_document(session_id, name, content)
+            await store.update_company_name(session_id, guessed)
+    ok = await store.add_document(session_id, name, content)
     if not ok:
         raise HTTPException(500, "Dokument konnte nicht hinzugefuegt werden.")
-    return store.to_dict(store.get_session(session_id))
+    return await store.to_dict(await store.get_session(session_id))
 
 
 @v1.get("/session/{session_id}")
@@ -386,12 +388,12 @@ async def session_get(
     user: dict = Depends(get_current_user)
 ):
     store = get_session_store()
-    session = store.get_session(session_id)
+    session = await store.get_session(session_id)
     if not session:
         raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
     if session.user_id != user["id"]:
         raise HTTPException(403, "Diese Session gehoert einem anderen User.")
-    return store.to_dict(session)
+    return await store.to_dict(session)
 
 
 @v1.delete("/session/{session_id}/documents/{index}")
@@ -405,10 +407,10 @@ async def session_remove_document(
         raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
     if session.user_id != user["id"]:
         raise HTTPException(403, "Diese Session gehoert einem anderen User.")
-    ok = store.remove_document(session_id, index)
+    ok = await store.remove_document(session_id, index)
     if not ok:
         raise HTTPException(400, "Ungueltiger Index.")
-    return store.to_dict(store.get_session(session_id))
+    return await store.to_dict(await store.get_session(session_id))
 
 
 @v1.delete("/session/{session_id}")
@@ -422,7 +424,7 @@ async def session_delete(
         raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
     if session.user_id != user["id"]:
         raise HTTPException(403, "Diese Session gehoert einem anderen User.")
-    store.delete_session(session_id)
+    await store.delete_session(session_id)
     return {"status": "session_deleted"}
 
 
@@ -436,7 +438,7 @@ async def session_analyze(
     lang = body.get("lang", "de") if isinstance(body, dict) else "de"
 
     store = get_session_store()
-    session = store.get_session(session_id)
+    session = await store.get_session(session_id)
     if not session:
         raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
     if session.user_id != user["id"]:
@@ -450,7 +452,7 @@ async def session_analyze(
     documents = [{"name": d.name, "content": d.content} for d in session.documents]
     result = await startup_agent.analyze_multi(company, documents, session_id=user["id"], lang=lang)
 
-    store.save_result(session_id, result)
+    await store.save_result(session_id, result)
     return {"status": "success", "data": result, "mode": "startup_dd_session", "session_id": session_id, "lang": lang}
 
 
@@ -459,7 +461,7 @@ async def sessions_list(
     user: dict = Depends(get_current_user)
 ):
     store = get_session_store()
-    sessions = store.list_sessions(user["id"])
+    sessions = await store.list_sessions(user["id"])
     return {"sessions": sessions, "total": len(sessions)}
 
 
@@ -469,7 +471,7 @@ async def session_get_result(
     user: dict = Depends(get_current_user)
 ):
     store = get_session_store()
-    session = store.get_session(session_id)
+    session = await store.get_session(session_id)
     if not session:
         raise HTTPException(404, "Session nicht gefunden.")
     if session.user_id != user["id"]:

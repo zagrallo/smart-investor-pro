@@ -1,14 +1,12 @@
+import json
 import time
 import uuid
-import json
-import os
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
+from db import get_pool, init_db
 
 logger = logging.getLogger(__name__)
-
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'sessions')
 
 
 @dataclass
@@ -29,10 +27,6 @@ class AnalysisSession:
     status: str = "active"
     result: dict | None = None
 
-    @property
-    def file_path(self) -> str:
-        return os.path.join(DATA_DIR, f"{self.id}.json")
-
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -49,126 +43,129 @@ class AnalysisSession:
             "has_result": self.result is not None,
         }
 
-    def save(self):
-        os.makedirs(DATA_DIR, exist_ok=True)
-        data = {
-            "id": self.id,
-            "user_id": self.user_id,
-            "company_name": self.company_name,
-            "status": self.status,
-            "documents": [
-                {"name": d.name, "content": d.content, "added_at": d.added_at}
-                for d in self.documents
-            ],
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-            "result": self.result,
-        }
-        with open(self.file_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, default=str)
-
-    @classmethod
-    def load(cls, session_id: str) -> Optional["AnalysisSession"]:
-        path = os.path.join(DATA_DIR, f"{session_id}.json")
-        if not os.path.exists(path):
-            return None
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning("Failed to load session %s: %s", session_id, e)
-            return None
-        docs = [SessionDoc(**d) for d in data.get("documents", [])]
-        return cls(
-            id=data["id"],
-            user_id=data["user_id"],
-            company_name=data.get("company_name", ""),
-            status=data.get("status", "active"),
-            documents=docs,
-            created_at=data.get("created_at", 0),
-            updated_at=data.get("updated_at", 0),
-            result=data.get("result"),
-        )
-
 
 class SessionStore:
-    def create_session(self, user_id: str, company_name: str = "") -> str:
+    async def _ensure_db(self):
+        await init_db()
+
+    async def create_session(self, user_id: str, company_name: str = "") -> str:
+        await self._ensure_db()
+        pool = await get_pool()
         session_id = uuid.uuid4().hex[:12]
         now = time.time()
-        session = AnalysisSession(
-            id=session_id, user_id=user_id, company_name=company_name,
-            documents=[], created_at=now, updated_at=now,
-        )
-        session.save()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """INSERT INTO sessions (id, user_id, company_name, status, documents, created_at, updated_at)
+                   VALUES ($1, $2, $3, 'active', '[]', $4, $5)""",
+                session_id, user_id, company_name, now, now
+            )
         logger.info("Session created", extra={"session_id": session_id, "user_id": user_id})
         return session_id
 
-    def get_session(self, session_id: str) -> Optional[AnalysisSession]:
-        return AnalysisSession.load(session_id)
+    async def get_session(self, session_id: str) -> Optional[AnalysisSession]:
+        await self._ensure_db()
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM sessions WHERE id = $1", session_id)
+            if not row:
+                return None
+        docs_data = json.loads(row["documents"]) if isinstance(row["documents"], str) else (row["documents"] or [])
+        docs = [SessionDoc(**d) for d in docs_data]
+        return AnalysisSession(
+            id=row["id"],
+            user_id=row["user_id"],
+            company_name=row.get("company_name", ""),
+            status=row.get("status", "active"),
+            documents=docs,
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            result=row.get("result"),
+        )
 
-    def add_document(self, session_id: str, name: str, content: str) -> bool:
-        s = self.get_session(session_id)
+    async def add_document(self, session_id: str, name: str, content: str) -> bool:
+        s = await self.get_session(session_id)
         if not s:
             return False
         s.documents.append(SessionDoc(name=name, content=content, added_at=time.time()))
         s.updated_at = time.time()
-        s.save()
-        return True
+        return await self._save(s)
 
-    def remove_document(self, session_id: str, index: int) -> bool:
-        s = self.get_session(session_id)
+    async def remove_document(self, session_id: str, index: int) -> bool:
+        s = await self.get_session(session_id)
         if not s or index < 0 or index >= len(s.documents):
             return False
         s.documents.pop(index)
         s.updated_at = time.time()
-        s.save()
-        return True
+        return await self._save(s)
 
-    def update_company_name(self, session_id: str, company_name: str) -> bool:
-        s = self.get_session(session_id)
+    async def update_company_name(self, session_id: str, company_name: str) -> bool:
+        s = await self.get_session(session_id)
         if not s:
             return False
         s.company_name = company_name
         s.updated_at = time.time()
-        s.save()
-        return True
+        return await self._save(s)
 
-    def save_result(self, session_id: str, result: dict) -> bool:
-        s = self.get_session(session_id)
+    async def save_result(self, session_id: str, result: dict) -> bool:
+        s = await self.get_session(session_id)
         if not s:
             return False
         s.result = result
         s.status = "completed"
         s.updated_at = time.time()
-        s.save()
-        return True
+        return await self._save(s)
 
-    def delete_session(self, session_id: str) -> bool:
-        path = os.path.join(DATA_DIR, f"{session_id}.json")
-        if os.path.exists(path):
-            os.remove(path)
-            logger.info("Session deleted", extra={"session_id": session_id})
-            return True
-        return False
+    async def delete_session(self, session_id: str) -> bool:
+        await self._ensure_db()
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM sessions WHERE id = $1", session_id)
+            return result != "DELETE 0"
 
-    def list_sessions(self, user_id: str) -> list[dict]:
+    async def list_sessions(self, user_id: str) -> list[dict]:
+        await self._ensure_db()
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM sessions WHERE user_id = $1 ORDER BY updated_at DESC",
+                user_id
+            )
         sessions = []
-        if not os.path.exists(DATA_DIR):
-            return sessions
-        for fname in os.listdir(DATA_DIR):
-            if not fname.endswith(".json"):
-                continue
-            sid = fname[:-5]
-            s = AnalysisSession.load(sid)
-            if s and s.user_id == user_id:
-                sessions.append(s.to_dict())
-        sessions.sort(key=lambda s: s["updated_at"], reverse=True)
+        for row in rows:
+            docs_data = json.loads(row["documents"]) if isinstance(row["documents"], str) else (row["documents"] or [])
+            docs = [SessionDoc(**d) for d in docs_data]
+            s = AnalysisSession(
+                id=row["id"], user_id=row["user_id"],
+                company_name=row.get("company_name", ""),
+                status=row.get("status", "active"),
+                documents=docs,
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                result=row.get("result"),
+            )
+            sessions.append(s.to_dict())
         return sessions
 
-    def cleanup_expired(self) -> int:
+    async def _save(self, s: AnalysisSession) -> bool:
+        await self._ensure_db()
+        pool = await get_pool()
+        docs_json = json.dumps([
+            {"name": d.name, "content": d.content, "added_at": d.added_at}
+            for d in s.documents
+        ], ensure_ascii=False)
+        result_json = json.dumps(s.result, ensure_ascii=False, default=str) if s.result else None
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE sessions SET company_name=$1, status=$2, documents=$3::jsonb,
+                   result=$4::jsonb, updated_at=$5 WHERE id=$6""",
+                s.company_name, s.status, docs_json, result_json, s.updated_at, s.id
+            )
+        return True
+
+    async def cleanup_expired(self) -> int:
         return 0
 
-    def to_dict(self, session: AnalysisSession) -> dict:
+    async def to_dict(self, session: AnalysisSession) -> dict:
         return session.to_dict()
 
 

@@ -129,16 +129,20 @@ cd smart-investor-mvp
 # Install dependencies
 pip install -r requirements.txt
 
-# Configure API keys (.env)
+# Configure API keys + Neon DB (.env)
 # DEEPSEEK_API_KEY=sk-...
 # GEMINI_API_KEY=...
-# (optional) LLM_API_KEY=...  # fallback
+# DATABASE_URL=postgresql://... (Neon)
 
-# Run
+# Run locally
 uvicorn main:app --host 0.0.0.0 --port 8000
 
-# Open
-# http://localhost:8000
+# Deploy to Vercel
+# 1. Push to GitHub
+# 2. Import repo in Vercel
+# 3. Set env vars in Vercel dashboard:
+#    DEEPSEEK_API_KEY, GEMINI_API_KEY, DATABASE_URL, SECRET_KEY, APP_ENV=production
+# 4. Deploy – Vercel auto-detects Python
 ```
 
 ### 🧪 Tests
@@ -164,8 +168,8 @@ pytest tests/test_v04.py -v         # 5 visual/consensus tests
 | **Frontend** | Vanilla JS, CSS custom properties, i18n |
 | **PDF** | ReportLab |
 | **Auth** | JWT (python-jose), HTTPBearer |
-| **Database** | SQLite (via aiosqlite for audit) |
-| **Session** | JSON file store (`data/sessions/`) |
+| **Database** | PostgreSQL (Neon via asyncpg) |
+| **Session** | PostgreSQL (Neon via asyncpg) |
 | **Cache** | Redis (optional, in-memory fallback) |
 
 ---

@@ -1,4 +1,3 @@
-import aiosqlite
 import hashlib
 import json
 import logging
@@ -7,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from models import InvestmentMemo
 from data.eodhd_connector import EODHDConnector
+from db import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,6 @@ DISCLAIMER_EU = (
 
 
 def sanitize_input(text: str, max_len: int = 32000) -> str:
-    """Remove potential prompt-injection patterns and limit length."""
     text = re.sub(r"(?i)(system|ignore|override|new\s*instruction|act\s*as|you\s*are\s*now)\s*[:\]\-]", "", text)
     return text.strip()[:max_len]
 
@@ -26,29 +25,11 @@ def sanitize_input(text: str, max_len: int = 32000) -> str:
 class ComplianceEngine:
     def __init__(self):
         self.disclaimer = DISCLAIMER_EU
-        self.db_path = "audit.db"
         self.eodhd = EODHDConnector()
 
     async def init_db(self):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS audits (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    idea TEXT NOT NULL,
-                    model_used TEXT,
-                    cost_usd REAL DEFAULT 0,
-                    tokens_used INTEGER DEFAULT 0,
-                    input_hash TEXT,
-                    output_hash TEXT,
-                    prev_hash TEXT,
-                    chain_hash TEXT,
-                    disclaimer_accepted INTEGER DEFAULT 1,
-                    jurisdiction TEXT DEFAULT 'EU',
-                    timestamp TEXT NOT NULL
-                )
-            """)
-            await db.commit()
+        from db import init_db
+        await init_db()
 
     def get_market_context(self, idea: str) -> dict:
         return {
@@ -58,7 +39,6 @@ class ComplianceEngine:
         }
 
     async def fetch_market_data(self, ticker: str) -> dict:
-        """Async EODHD fetch - non-blocking. Returns empty data for private companies."""
         if not ticker:
             return {"ticker": "", "source": "none", "note": "Private company – no market data available"}
         data = await self.eodhd.get_financials(ticker)
@@ -79,7 +59,6 @@ class ComplianceEngine:
 
     def _is_private_company(self, text: str) -> bool:
         lower = text.lower()
-        # GmbH/UG/AG im Text → Privatunternehmen (DACH)
         if re.search(r'\b(gmbh|ug|ag|limited|llc|pte\.?\s*ltd)\b', lower):
             return True
         for kw in self.PRIVATE_KEYWORDS:
@@ -88,7 +67,6 @@ class ComplianceEngine:
         return False
 
     def extract_ticker(self, idea: str) -> str:
-        """Extract ticker from investment idea text. Returns empty string for private companies."""
         if self._is_private_company(idea):
             logger.debug("Private company detected, skipping ticker extraction")
             return ""
@@ -105,8 +83,6 @@ class ComplianceEngine:
                 if ticker not in self.TICKER_BLOCKLIST:
                     return ticker
 
-        # Fallback: Nur nach bekannten Ticker-Format suchen (z.B. "TSLA" in "...Tesla (TSLA)...")
-        # aber Blocklist-False-Positives wie "GmbH" → "GH" ignorieren
         words = idea.split()
         for word in words:
             cleaned = re.sub(r"[^A-Z]", "", word)
@@ -115,54 +91,48 @@ class ComplianceEngine:
         return ""
 
     async def save_audit(self, user_id: str, llm_result: dict, idea: str) -> int:
-        await self.init_db()
+        from db import init_db
+        await init_db()
+        pool = await get_pool()
+
         input_hash = hashlib.sha256(idea.encode()).hexdigest()[:16]
         output_hash = hashlib.sha256(
             json.dumps(llm_result.get("content", ""), default=str).encode()
         ).hexdigest()[:16]
 
-        async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute(
-                "SELECT chain_hash FROM audits ORDER BY id DESC LIMIT 1"
-            ) as cursor:
-                row = await cursor.fetchone()
-                prev_hash = row[0] if row else "0" * 64
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT chain_hash FROM audits ORDER BY id DESC LIMIT 1")
+            prev_hash = row["chain_hash"] if row else "0" * 64
 
             chain_payload = f"{user_id}|{llm_result.get('cost_usd', 0)}|{llm_result.get('tokens', 0)}|{prev_hash}|{input_hash}"
             chain_hash = hashlib.sha256(chain_payload.encode()).hexdigest()
 
-            cursor = await db.execute(
+            row = await conn.fetchrow(
                 """INSERT INTO audits
                    (user_id, idea, model_used, cost_usd, tokens_used,
                     input_hash, output_hash, prev_hash, chain_hash,
                     disclaimer_accepted, jurisdiction, timestamp)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'EU', ?)""",
-                (
-                    f"beta-{user_id}",
-                    idea[:500],
-                    llm_result.get("model", "unknown"),
-                    llm_result.get("cost_usd", 0.0),
-                    llm_result.get("tokens", 0),
-                    input_hash,
-                    output_hash,
-                    prev_hash,
-                    chain_hash,
-                    datetime.now(timezone.utc).isoformat()
-                )
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, 'EU', $10)
+                   RETURNING id""",
+                f"beta-{user_id}", idea[:500],
+                llm_result.get("model", "unknown"),
+                llm_result.get("cost_usd", 0.0),
+                llm_result.get("tokens", 0),
+                input_hash, output_hash, prev_hash, chain_hash,
+                datetime.now(timezone.utc).isoformat()
             )
-            await db.commit()
-            return cursor.lastrowid
+            return row["id"]
 
     async def get_audit_trail(self, user_id: str) -> list[dict]:
-        await self.init_db()
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM audits WHERE user_id = ? ORDER BY id DESC",
-                (f"beta-{user_id}",)
-            ) as cursor:
-                rows = await cursor.fetchall()
-                return [dict(r) for r in rows]
+        from db import init_db
+        await init_db()
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM audits WHERE user_id = $1 ORDER BY id DESC",
+                f"beta-{user_id}"
+            )
+            return [dict(r) for r in rows]
 
     def check_budget(self, cumulative_cost: float) -> bool:
         from config import settings
