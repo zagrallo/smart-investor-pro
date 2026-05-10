@@ -1,0 +1,7 @@
+__pycache__
+.git
+.env
+*.db
+data/sessions/
+tests/
+dy/
