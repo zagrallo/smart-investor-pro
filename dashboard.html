@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Smart Investor Pro</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#0a0a14;--surface:#13132a;--card:#1b1b3a;--border:#2d2d5e;--accent:#00d4aa;--accent2:#6c63ff;--text:#e8e8f0;--muted:#8888aa;--err:#ff4757;--ok:#2ed573;--warn:#ffa502;--radius:12px}
@@ -133,6 +134,36 @@ details[open] summary{margin-bottom:.5rem}
 .tab:hover{color:var(--text)}
 .tab-content{display:none}
 .tab-content.active{display:block}
+.chart-container{position:relative;height:260px;margin-top:1rem}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+@media(max-width:768px){.chart-grid{grid-template-columns:1fr}}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center;margin-bottom:1rem}
+@media(max-width:600px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--bg);border-radius:8px;padding:10px}
+.kpi .value{font-size:1.3em;font-weight:700;color:var(--text)}
+.kpi .label{font-size:.7em;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+.bar-row{display:flex;align-items:center;margin:5px 0}
+.bar-label{width:100px;font-size:.8em;color:var(--muted);flex-shrink:0}
+.bar-track{flex:1;height:20px;background:var(--bg);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));color:#000;font-size:.7em;line-height:20px;padding:0 6px;border-radius:4px;text-align:right;font-weight:600;min-width:fit-content}
+.doc-item{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:6px;margin:4px 0;font-size:.8rem}
+.doc-item .doc-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.doc-item .doc-size{color:var(--muted);font-size:.7rem;flex-shrink:0}
+.doc-item .doc-remove{background:none;border:none;color:var(--err);cursor:pointer;font-size:1.1rem;line-height:1;padding:0 4px;flex-shrink:0;opacity:.7}
+.doc-item .doc-remove:hover{opacity:1}
+.session-badge{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:10px;background:rgba(0,212,170,.12);color:var(--accent);margin-left:6px}
+.session-list{max-height:420px;overflow-y:auto}
+.session-card{background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:.2s;border:1px solid transparent;position:relative}
+.session-card:hover{border-color:var(--accent);background:rgba(0,212,170,.03)}
+.session-card .s-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.session-card .s-company{font-weight:600;font-size:.85rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.session-card .s-date{font-size:.65rem;color:var(--muted);flex-shrink:0;margin-left:8px}
+.session-card .s-meta{display:flex;gap:8px;align-items:center;font-size:.72rem;color:var(--muted);flex-wrap:wrap}
+.session-card .s-meta span{display:flex;align-items:center;gap:3px}
+.session-card .s-delete{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--err);color:#fff;border:none;font-size:14px;line-height:20px;text-align:center;cursor:pointer;opacity:0;transition:.2s;z-index:5;padding:0}
+.session-card:hover .s-delete{opacity:1}
+.session-card .s-delete:hover{transform:scale(1.2)}
+.session-empty{padding:1.5rem;text-align:center;color:var(--muted);font-size:.8rem}
 </style>
 </head>
 <body>
@@ -145,6 +176,22 @@ details[open] summary{margin-bottom:.5rem}
   <div class="nav-status">
     <span class="dot" id="status-dot"></span>
     <span id="status-text">Verbindung prüfen...</span>
+    <span style="font-size:.7rem;color:var(--muted);margin-left:8px" data-i18n="nav.ui_lang">UI</span>
+    <select id="lang-select" onchange="setLanguage(this.value)" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:.75rem;cursor:pointer">
+      <option value="de">DE</option>
+      <option value="en">EN</option>
+      <option value="fr">FR</option>
+      <option value="ar">AR</option>
+      <option value="tr">TR</option>
+    </select>
+    <span style="font-size:.7rem;color:var(--muted);margin-left:4px" data-i18n="nav.output_lang">Out</span>
+    <select id="output-lang-select" onchange="setOutputLanguage(this.value)" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:.75rem;cursor:pointer">
+      <option value="de">DE</option>
+      <option value="en">EN</option>
+      <option value="fr">FR</option>
+      <option value="ar">AR</option>
+      <option value="tr">TR</option>
+    </select>
     <div class="dancer idle" id="dancer">
       <div class="dancer-body">
         <div class="head">
@@ -166,54 +213,69 @@ details[open] summary{margin-bottom:.5rem}
 <div>
   <div class="card" style="margin-bottom:1.5rem">
     <div class="card-title">
-      &#128200; Investment-Analyse
+      &#128200; <span data-i18n="card.title.analysis">Investment-Analyse</span>
       <span style="margin-left:auto;display:flex;gap:4px;background:var(--bg);border-radius:6px;padding:2px">
-        <button class="btn btn-sm" style="border-radius:4px;padding:4px 12px;font-size:.75rem" id="mode-equity" onclick="switchMode('equity')">&#127881; Aktien</button>
-        <button class="btn btn-sm" style="border-radius:4px;padding:4px 12px;font-size:.75rem;background:var(--accent);color:#000" id="mode-startup" onclick="switchMode('startup')">&#128640; Startup</button>
+        <button class="btn btn-sm" style="border-radius:4px;padding:4px 12px;font-size:.75rem" id="mode-equity" onclick="switchMode('equity')" data-i18n="mode.equity">&#127881; Aktien</button>
+        <button class="btn btn-sm" style="border-radius:4px;padding:4px 12px;font-size:.75rem;background:var(--accent);color:#000" id="mode-startup" onclick="switchMode('startup')" data-i18n="mode.startup">&#128640; Startup</button>
       </span>
     </div>
 
     <div id="mode-equity-ui">
       <div class="tabs">
-        <div class="tab active" data-tab="text-equity" onclick="switchTab(this)">&#128221; Text</div>
+        <div class="tab active" data-tab="text-equity" onclick="switchTab(this)" data-i18n="tab.text">&#128221; Text</div>
       </div>
       <div class="tab-content active" id="tab-text-equity">
         <div class="input-group">
-          <label for="idea-input">Unternehmen oder Aktien-Idee</label>
-          <textarea id="idea-input" placeholder="z.B. Analysiere Apple Inc (AAPL) als langfristiges Investment&#10;oder: Analysiere SAP SE f&uuml;r das DACH-Software-Portfolio">Analysiere Apple Inc (AAPL) als langfristiges Investment</textarea>
+          <label for="idea-input" data-i18n="input.idea.label">Unternehmen oder Aktien-Idee</label>
+          <textarea id="idea-input" data-i18n-placeholder="input.idea.placeholder" placeholder="z.B. Analysiere Apple Inc (AAPL) als langfristiges Investment&#10;oder: Analysiere SAP SE f&uuml;r das DACH-Software-Portfolio">Analysiere Apple Inc (AAPL) als langfristiges Investment</textarea>
         </div>
       </div>
     </div>
 
     <div id="mode-startup-ui" style="display:none">
       <div class="tabs">
-        <div class="tab active" data-tab="text-startup" onclick="switchTab(this)">&#128221; Text</div>
-        <div class="tab" data-tab="file-startup" onclick="switchTab(this)">&#128196; .md Datei</div>
+        <div class="tab active" data-tab="text-startup" onclick="switchTab(this)" data-i18n="tab.text">&#128221; Text</div>
+        <div class="tab" data-tab="file-startup" onclick="switchTab(this)" data-i18n="tab.file">&#128196; .md Datei</div>
+        <div class="tab" data-tab="multi-startup" onclick="switchTab(this)" data-i18n="tab.multi">&#128218; Multi-Datei</div>
       </div>
       <div class="tab-content active" id="tab-text-startup">
         <div class="input-group">
-          <label for="startup-name">Startup-Name</label>
-          <input type="text" id="startup-name" placeholder="z.B. TechStart GmbH" style="text-transform:uppercase">
+          <label for="startup-name" data-i18n="input.startup.name">Startup-Name</label>
+          <input type="text" id="startup-name" data-i18n-placeholder="input.startup.name.placeholder" placeholder="z.B. TechStart GmbH" style="text-transform:uppercase">
         </div>
         <div class="input-group">
-          <label for="startup-doc">Dokument (Business Plan / Investor Deck)</label>
-          <textarea id="startup-doc" placeholder="F&uuml;ge den Text aus dem Business-Plan hier ein oder lade eine .md Datei hoch..." style="min-height:120px"></textarea>
+          <label for="startup-doc" data-i18n="input.startup.doc">Dokument (Business Plan / Investor Deck)</label>
+          <textarea id="startup-doc" data-i18n-placeholder="input.startup.doc.placeholder" placeholder="F&uuml;ge den Text aus dem Business-Plan hier ein oder lade eine .md Datei hoch..." style="min-height:120px"></textarea>
         </div>
       </div>
       <div class="tab-content" id="tab-file-startup">
         <div class="dropzone" id="dropzone-startup" onclick="$('startup-file-input').click()" ondragover="this.classList.add('dragover');event.preventDefault()" ondragleave="this.classList.remove('dragover')" ondrop="handleStartupDrop(event)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-          <p>Investor-Dokument (.md) hier ablegen</p>
+          <p data-i18n="dropzone.single">Investor-Dokument (.md) hier ablegen</p>
           <div id="startup-file-name" class="fname"></div>
         </div>
         <input type="file" id="startup-file-input" accept=".md" style="display:none" onchange="handleStartupFileSelect(event)">
       </div>
+      <div class="tab-content" id="tab-multi-startup">
+        <div class="input-group">
+          <label for="session-company" data-i18n="input.session.company">Startup-Name (optional)</label>
+          <input type="text" id="session-company" placeholder="z.B. TechStart GmbH" style="text-transform:uppercase">
+        </div>
+        <div class="dropzone" id="dropzone-multi" onclick="$('multi-file-input').click()" ondragover="this.classList.add('dragover');event.preventDefault()" ondragleave="this.classList.remove('dragover')" ondrop="handleMultiDrop(event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          <p data-i18n="dropzone.multi">Mehrere .md Dokumente hier ablegen</p>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:4px" data-i18n="dropzone.multi.hint">Du kannst mehrere Dateien gleichzeitig auswaehlen</div>
+        </div>
+        <input type="file" id="multi-file-input" accept=".md" multiple style="display:none" onchange="handleMultiFileSelect(event)">
+        <div id="session-doc-list" style="margin-top:8px"></div>
+        <div id="session-status" style="font-size:.8rem;color:var(--muted);margin-top:4px"></div>
+      </div>
     </div>
 
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="runAnalysis()" id="btn-analyze">&#9654; Analyse starten</button>
-      <button class="btn btn-secondary btn-sm" onclick="downloadPDF()" id="btn-pdf" disabled>&#128196; PDF</button>
-      <button class="btn btn-ghost btn-sm" onclick="loadAudit()" id="btn-audit">&#128214; Verlauf</button>
+      <button class="btn btn-primary" onclick="runAnalysis()" id="btn-analyze" data-i18n="btn.analyze">&#9654; Analyse starten</button>
+      <button class="btn btn-secondary btn-sm" onclick="downloadPDF()" id="btn-pdf" disabled data-i18n="btn.pdf">&#128196; PDF</button>
+      <button class="btn btn-ghost btn-sm" onclick="loadAudit()" id="btn-audit" data-i18n="btn.history">&#128214; Verlauf</button>
     </div>
   </div>
 
@@ -221,8 +283,8 @@ details[open] summary{margin-bottom:.5rem}
   <div id="result-area">
     <div class="empty-state" id="empty-state">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-      <p>Gib eine Investment-Idee ein und starte die Analyse.</p>
-      <p style="font-size:.8rem;margin-top:.5rem">DeepSeek LLM + yfinance Daten – live und kostenlos.</p>
+      <p data-i18n="empty.idea">Gib eine Investment-Idee ein und starte die Analyse.</p>
+      <p style="font-size:.8rem;margin-top:.5rem" data-i18n="empty.idea.sub">DeepSeek LLM + yfinance Daten – live und kostenlos.</p>
     </div>
     <div id="result-content" style="display:none"></div>
     <div id="audit-content" style="display:none"></div>
@@ -232,31 +294,34 @@ details[open] summary{margin-bottom:.5rem}
 <!-- RIGHT: Sidebar -->
 <div>
   <div class="card side-card">
-    <div class="card-title">&#9889; Status</div>
+    <div class="card-title">&#9889; <span data-i18n="sidebar.status">Status</span></div>
     <div style="display:grid;gap:8px;font-size:.85rem">
-      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">LLM</span><span id="s-llm">-</span></div>
-      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Daten</span><span id="s-data">-</span></div>
-      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Modus</span><span id="s-mode">-</span></div>
-      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Version</span><span id="s-version">-</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)" data-i18n="sidebar.status.llm">LLM</span><span id="s-llm">-</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)" data-i18n="sidebar.status.data">Daten</span><span id="s-data">-</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)" data-i18n="sidebar.status.mode">Modus</span><span id="s-mode">-</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)" data-i18n="sidebar.status.version">Version</span><span id="s-version">-</span></div>
     </div>
   </div>
 
   <div class="card side-card">
-    <div class="card-title">&#128221; Letzte Analysen</div>
-    <div id="history-list">
-      <div class="empty-state" style="padding:1rem;font-size:.8rem">Noch keine Analysen.</div>
+    <div class="card-title">
+      &#128451; <span data-i18n="sidebar.sessions">Gespeicherte Sessions</span>
+      <span id="session-count" style="margin-left:auto;font-size:.7rem;color:var(--muted)">0</span>
+    </div>
+    <div class="session-list" id="session-list">
+      <div class="session-empty" data-i18n="empty.sessions.loading">Lade Sessions...</div>
     </div>
   </div>
 
   <div class="card side-card">
-    <div class="card-title">&#8505; Info</div>
+    <div class="card-title" data-i18n="sidebar.info">&#8505; Info</div>
     <div style="font-size:.8rem;color:var(--muted);line-height:1.6">
-      <strong style="color:var(--text)">Datenquellen:</strong><br>
-      yfinance (live) → SEC EDGAR → Mock<br><br>
-      <strong style="color:var(--text)">LLM:</strong><br>
-      DeepSeek / ChatGPT per .env konfigurierbar<br><br>
-      <strong style="color:var(--text)">PDF-Report:</strong><br>
-      9-Sektionen, MiFID II-konform
+      <strong style="color:var(--text)" data-i18n="sidebar.info.data_sources">Datenquellen:</strong><br>
+      <span data-i18n="sidebar.info.data_sources.desc">yfinance (live) → SEC EDGAR → Mock</span><br><br>
+      <strong style="color:var(--text)" data-i18n="sidebar.info.llm_label">LLM:</strong><br>
+      <span data-i18n="sidebar.info.llm.desc">DeepSeek / ChatGPT per .env konfigurierbar</span><br><br>
+      <strong style="color:var(--text)" data-i18n="sidebar.info.pdf_label">PDF-Report:</strong><br>
+      <span data-i18n="sidebar.info.pdf.desc">9-Sektionen, MiFID II-konform</span>
     </div>
   </div>
 </div>
@@ -269,12 +334,83 @@ details[open] summary{margin-bottom:.5rem}
 </div>
 
 <script>
+// ===== i18n Engine =====
+const LOCALE_KEYS = ['de','en','fr','ar','tr'];
+let LOCALE_DATA = {};
+let currentLang = localStorage.getItem('smartinvestor_lang') || 'de';
+let outputLang = localStorage.getItem('smartinvestor_output_lang') || 'de';
+
+async function loadLocale(lang) {
+  try {
+    const r = await fetch('/locales/' + lang + '.json?_=' + Date.now());
+    if(r.ok) {
+      LOCALE_DATA[lang] = await r.json();
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+function t(key) {
+  const data = LOCALE_DATA[currentLang];
+  if(data && data[key]) return data[key];
+  // Fallback to German
+  const de = LOCALE_DATA['de'];
+  return (de && de[key]) ? de[key] : key;
+}
+
+function applyTranslations() {
+  // data-i18n elements: set textContent
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const translated = t(key);
+    if(el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      if(el.hasAttribute('placeholder')) el.setAttribute('placeholder', translated);
+    } else {
+      el.textContent = translated;
+    }
+  });
+  // data-i18n-placeholder elements
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder')));
+  });
+  // data-i18n-title elements
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    el.setAttribute('title', t(el.getAttribute('data-i18n-title')));
+  });
+  // HTML direction for Arabic
+  document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+}
+
+async function setLanguage(lang) {
+  if(!LOCALE_DATA[lang]) await loadLocale(lang);
+  currentLang = lang;
+  localStorage.setItem('smartinvestor_lang', lang);
+  document.getElementById('lang-select').value = lang;
+  applyTranslations();
+  // Re-translate dynamic content from current view
+  const rc = document.getElementById('result-content');
+  if(rc.style.display !== 'none' && rc.innerHTML) {
+    if(LAST_MEMO && CURRENT_MODE === 'startup') renderStartupResult({memo: LAST_MEMO});
+    else if(LAST_MEMO) renderResult({memo: LAST_MEMO});
+  }
+  refreshSessionList();
+}
+
+function setOutputLanguage(lang) {
+  outputLang = lang;
+  localStorage.setItem('smartinvestor_output_lang', lang);
+  document.getElementById('output-lang-select').value = lang;
+}
+
 const API = window.location.origin;
 let JWT = null;
 let LAST_MEMO = null;
 let CURRENT_MODE = 'startup';
 
 function $(id){return document.getElementById(id)}
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function escJson(o){return JSON.stringify(o,function(k,v){return typeof v==='string'?esc(v):v},2)}
 
 function showToast(title, msg, isError=false){
   const t=$('toast');$('toast-title').textContent=title;$('toast-msg').textContent=msg;
@@ -296,6 +432,7 @@ async function api(path, opts={}){
 function setStatus(dot, text){
   $('status-dot').className='dot '+dot;
   $('status-text').textContent=text;
+  $('status-text').removeAttribute('data-i18n');
 }
 
 function switchMode(mode){
@@ -310,41 +447,64 @@ function switchMode(mode){
 function startDance(msg){
   const d=$('dancer');
   d.className='dancer dancing';
-  $('dancer-tip').textContent=msg||'🤖 Analyse läuft...';
+  $('dancer-tip').textContent=msg||'🤖 ' + t('btn.analyzing');
 }
 function stopDance(msg){
   const d=$('dancer');
   d.className='dancer idle';
-  $('dancer-tip').textContent=msg||'Fertig!';
-  setTimeout(()=>{$('dancer-tip').textContent='System bereit'},4000);
+  $('dancer-tip').textContent=msg||t('common.ready');
+  setTimeout(()=>{$('dancer-tip').textContent=t('nav.status.ready')},4000);
+}
+
+function detectBrowserLang() {
+  const langs = navigator.languages || [navigator.language || navigator.userLanguage || 'de'];
+  for (const l of langs) {
+    const short = l.split('-')[0];
+    if (LOCALE_KEYS.includes(short)) return short;
+  }
+  return 'de';
 }
 
 async function init(){
+  const savedLang = localStorage.getItem('smartinvestor_lang') || detectBrowserLang();
+  const savedOutLang = localStorage.getItem('smartinvestor_output_lang') || detectBrowserLang();
+  await loadLocale('de');
+  await loadLocale('en');
+  await loadLocale('fr');
+  await loadLocale('ar');
+  await loadLocale('tr');
+  currentLang = savedLang;
+  outputLang = savedOutLang;
+  document.getElementById('lang-select').value = savedLang;
+  document.getElementById('output-lang-select').value = savedOutLang;
+  applyTranslations();
   try{
     const r=await api('/health');
     if(r.ok){
       const d=r.data;
-      setStatus(d.mock_mode?'mock':'live', d.mock_mode?'Mock-Modus (live)':'Live – verbunden');
+      setStatus(d.mock_mode?'mock':'live', d.mock_mode?t('nav.status.mock'):t('nav.status.connected'));
       $('s-llm').textContent=d.provider;
       $('s-data').textContent=d.source||(d.mock_mode?'Mock':'yfinance');
       $('s-mode').textContent=d.mock_mode?'Mock':'Live';
       $('s-version').textContent=d.version;
       JWT=null;
+      await loadSessionHistory();
     }else{
-      setStatus('','Keine Verbindung');
+      setStatus('',t('nav.status.no_connection'));
     }
   }catch(e){
-    setStatus('','Server nicht erreichbar');
-    showToast('Fehler','Starte den Server mit: uvicorn main:app',true);
+    setStatus('',t('nav.status.unreachable'));
+    showToast(t('error.generic'),t('error.server_unreachable'),true);
   }
 }
 
 function enableBtn(btn){
-  btn.disabled=false;btn.innerHTML='&#9654; Analyse starten';
+  btn.disabled=false;btn.innerHTML='&#9654; ' + t('btn.analyze');
 }
 
 async function runAnalysis(){
   const btn=$('btn-analyze');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> ' + t('btn.analyzing');
 
   if(CURRENT_MODE === 'startup'){
     await runStartupAnalysis();
@@ -354,11 +514,9 @@ async function runAnalysis(){
   // Get token first
   if(!JWT){
     const tr=await api('/auth/token',{method:'POST'});
-    if(!tr.ok){showToast('Auth-Fehler','Token konnte nicht geholt werden. Server läuft?',true);enableBtn(btn);return}
+    if(!tr.ok){showToast(t('toast.auth_error'),t('toast.auth_error.msg'),true);enableBtn(btn);return}
     JWT=tr.data.access_token;
   }
-
-  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Analysiere...';
   $('empty-state').style.display='none';
   $('audit-content').style.display='none';
   $('result-content').innerHTML='';
@@ -366,14 +524,14 @@ async function runAnalysis(){
 
   // Timeout warning after 45s
   let timeoutWarn = setTimeout(()=>{
-    showToast('Dauert länger...','DeepSeek arbeitet noch, bitte warten. Maximal 90s.',false);
+    showToast(t('toast.timeout'),t('toast.timeout.msg'),false);
     startDance('Immer am Rechnen...');
   },45000);
 
   try{
     const idea=$('idea-input').value.trim();
-    if(!idea){showToast('Eingabe fehlt','Bitte eine Investment-Idee eingeben.',true);enableBtn(btn);return}
-    const r=await api('/v1/analyze',{method:'POST',body:JSON.stringify({idea})});
+    if(!idea){clearTimeout(timeoutWarn);showToast(t('error.no_input'),t('error.no_input.msg'),true);enableBtn(btn);return}
+    const r=await api('/v1/analyze',{method:'POST',body:JSON.stringify({idea, lang: outputLang})});
 
     clearTimeout(timeoutWarn);
 
@@ -385,13 +543,13 @@ async function runAnalysis(){
       addHistory(d.memo.company_name, d.memo.recommended_action, d.cost_usd);
       stopDance(d.memo.recommended_action+' – '+d.memo.company_name);
     }else{
-      $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${r.data?.detail||'Analyse fehlgeschlagen'}</p></div>`;
-      stopDance('Fehlgeschlagen');
+      $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${esc(r.data?.detail||t('error.analysis_failed'))}</p></div>`;
+      stopDance(t('error.analysis_failed'));
     }
   }catch(e){
     clearTimeout(timeoutWarn);
-    $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${e.message}</p></div>`;
-    stopDance('Fehler');
+    $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${esc(e.message)}</p></div>`;
+    stopDance(t('error.generic'));
   }
   $('result-content').style.display='block';
   enableBtn(btn);
@@ -402,73 +560,82 @@ function renderResult(d){
   const actionClass={BUY:'badge-buy',HOLD:'badge-hold',PASS:'badge-pass',NEED_MORE_INFO:'badge-info'}[m.recommended_action]||'badge-info';
   const levelClass={HIGH:'risk-high',MEDIUM:'risk-medium',LOW:'risk-low',CRITICAL:'risk-critical'};
 
+  const _t = t;
   $('result-content').innerHTML=`
     <div class="card">
       <div class="result-header">
-        <h2>${m.company_name||'Unbekannt'}</h2>
-        <span class="badge ${actionClass}">${m.recommended_action||'N/A'}</span>
-        <span style="font-size:.9rem;color:var(--muted)">${(m.confidence_score*100).toFixed(0)}% Konfidenz</span>
+        <h2>${esc(m.company_name||t('common.unknown'))}</h2>
+        <span class="badge ${actionClass}">${esc(m.recommended_action||'N/A')}</span>
+        <span style="font-size:.9rem;color:var(--muted)">${((m.confidence_score||0)*100).toFixed(0)}% ${_t('startup.confidence')}</span>
       </div>
 
       <div class="metrics">
-        <div class="metric"><div class="val">${d.ticker||'-'}</div><div class="lbl">Ticker</div></div>
-        <div class="metric"><div class="val">${m.sector||'-'}</div><div class="lbl">Sektor</div></div>
-        <div class="metric"><div class="val">${d.cost_usd?'$'+d.cost_usd.toFixed(4):'-'}</div><div class="lbl">Kosten</div></div>
-        <div class="metric"><div class="val">${d.tokens_used||'-'}</div><div class="lbl">Tokens</div></div>
-        <div class="metric"><div class="val">${d.market_data?.source||'-'}</div><div class="lbl">Daten</div></div>
-        <div class="metric"><div class="val">${d.provider_status||'-'}</div><div class="lbl">Provider</div></div>
+        <div class="metric"><div class="val">${esc(d.ticker||'-')}</div><div class="lbl">${_t('ticker.label')}</div></div>
+        <div class="metric"><div class="val">${esc(m.sector||'-')}</div><div class="lbl">${_t('sector.label')}</div></div>
+        <div class="metric"><div class="val">${d.cost_usd?'$'+d.cost_usd.toFixed(4):'-'}</div><div class="lbl">${_t('cost.label')}</div></div>
+        <div class="metric"><div class="val">${esc(d.tokens_used||'-')}</div><div class="lbl">${_t('tokens.label')}</div></div>
+        <div class="metric"><div class="val">${esc(d.market_data?.source||'-')}</div><div class="lbl">${_t('data_source.label')}</div></div>
+        <div class="metric"><div class="val">${esc(d.provider_status||'-')}</div><div class="lbl">${_t('provider.label')}</div></div>
       </div>
 
-      <div class="thesis">${m.investment_thesis||'Keine Analyse verfügbar.'}</div>
+      <div class="thesis">${esc(m.investment_thesis||_t('startup.no_analysis'))}</div>
 
       <div style="margin-bottom:1rem">
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Marktchance</div>
-        <div style="font-size:.9rem;line-height:1.5">${m.market_opportunity||'N/A'}</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${_t('market_opportunity')}</div>
+        <div style="font-size:.9rem;line-height:1.5">${esc(m.market_opportunity||'N/A')}</div>
       </div>
 
       <div style="margin-bottom:1rem">
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Wettbewerbsvorteile</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${_t('competitive_advantages')}</div>
         <ul style="padding-left:1.2rem;font-size:.9rem;line-height:1.8">
-          ${(m.competitive_advantages||[]).map(a=>`<li>${a}</li>`).join('')||'<li style="color:var(--muted)">Keine</li>'}
+          ${(m.competitive_advantages||[]).map(a=>`<li>${esc(a)}</li>`).join('')||'<li style="color:var(--muted)">'+_t('startup.none')+'</li>'}
         </ul>
       </div>
 
       <div style="margin-bottom:1rem">
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Risiken</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${_t('startup.risks')}</div>
         <div class="risks">
           ${(m.key_risks||[]).map(r=>`
-            <span class="risk-tag ${levelClass[r.level]||'risk-medium'}" title="${r.description}">
-              ${r.level}: ${r.category}
+            <span class="risk-tag ${levelClass[r.level]||'risk-medium'}" title="${esc(r.description||'')}">
+              ${esc(r.level||'')}: ${esc(r.category||'')}
             </span>
-          `).join('')||'<span style="color:var(--muted);font-size:.85rem">Keine Risiken identifiziert</span>'}
+          `).join('')||'<span style="color:var(--muted);font-size:.85rem">'+_t('startup.no_risks')+'</span>'}
         </div>
       </div>
 
       <details>
-        <summary>Rohdaten (JSON)</summary>
-        <pre class="json">${JSON.stringify(m,null,2)}</pre>
+        <summary>${_t('startup.raw_data')}</summary>
+        <pre class="json">${escJson(m)}</pre>
       </details>
     </div>`;
 }
 
 async function runStartupAnalysis(){
   const btn=$('btn-analyze');
-  const isFileTab = document.querySelector('#mode-startup-ui .tab.active')?.dataset?.tab === 'file-startup';
+  const activeTab = document.querySelector('#mode-startup-ui .tab.active')?.dataset?.tab;
+  const isFileTab = activeTab === 'file-startup';
+  const isMultiTab = activeTab === 'multi-startup';
 
   if(!JWT){
     const tr=await api('/auth/token',{method:'POST'});
-    if(!tr.ok){showToast('Auth-Fehler','Token konnte nicht geholt werden.',true);enableBtn(btn);return}
+    if(!tr.ok){showToast(t('toast.auth_error'),t('toast.auth_error.msg'),true);enableBtn(btn);return}
     JWT=tr.data.access_token;
   }
 
-  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Startup DD...';
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> ' + t('startup.label') + '...';
   $('empty-state').style.display='none';
   $('audit-content').style.display='none';
   $('result-content').innerHTML='';
+
+  if(isMultiTab){
+    await runMultiFileAnalysis(btn);
+    return;
+  }
+
   startDance('VC-Analyse laeuft...');
 
   let timeoutWarn = setTimeout(()=>{
-    showToast('Dauert laenger...','DeepSeek arbeitet noch am Startup-Report. Maximal 120s.',false);
+    showToast(t('toast.timeout'),t('toast.timeout.startup'),false);
     startDance('DeepSeek praeft...');
   },45000);
 
@@ -476,22 +643,22 @@ async function runStartupAnalysis(){
     let r;
 
     if(isFileTab){
-      if(!UPLOADED_STARTUP_FILE){showToast('Keine Datei','Bitte .md Datei auswaehlen.',true);enableBtn(btn);return}
-      const form=new FormData();form.append('file',UPLOADED_STARTUP_FILE);
+      if(!UPLOADED_STARTUP_FILE){clearTimeout(timeoutWarn);showToast(t('error.no_file'),t('error.no_file.msg'),true);enableBtn(btn);return}
+      const form=new FormData();form.append('file',UPLOADED_STARTUP_FILE);form.append('lang',outputLang);
       try{
         r=await fetch(API+'/v1/upload/startup',{method:'POST',headers:{'Authorization':'Bearer '+JWT},body:form});
         const txt=await r.text();
         try{r={ok:r.ok,status:r.status,data:JSON.parse(txt)}}
         catch{r={ok:false,status:r.status,data:txt}}
       }catch(netErr){
-        showToast('Netzwerkfehler','Server nicht erreichbar.',true);enableBtn(btn);return
+        clearTimeout(timeoutWarn);showToast(t('error.network'),t('nav.status.unreachable'),true);enableBtn(btn);return
       }
     }else{
       const company=$('startup-name').value.trim();
       const doc=$('startup-doc').value.trim();
-      if(!company){showToast('Name fehlt','Bitte Startup-Name eingeben.',true);enableBtn(btn);return}
-      if(!doc){showToast('Dokument fehlt','Bitte Dokumenttext einfuegen oder Datei hochladen.',true);enableBtn(btn);return}
-      r=await api('/v1/analyze/startup',{method:'POST',body:JSON.stringify({company,document:doc})});
+      if(!company){clearTimeout(timeoutWarn);showToast(t('error.startup_name'),t('error.startup_name.msg'),true);enableBtn(btn);return}
+      if(!doc){clearTimeout(timeoutWarn);showToast(t('error.startup_doc'),t('error.startup_doc.msg'),true);enableBtn(btn);return}
+      r=await api('/v1/analyze/startup',{method:'POST',body:JSON.stringify({company,document:doc,lang:outputLang})});
     }
 
     clearTimeout(timeoutWarn);
@@ -502,14 +669,85 @@ async function runStartupAnalysis(){
       renderStartupResult(d);
       $('btn-pdf').disabled=false;
       stopDance(d.memo.recommendation+' – '+d.memo.company_name);
+      await refreshSessionList();
     }else{
-      $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${r.data?.detail||'Startup-Analyse fehlgeschlagen'}</p></div>`;
-      stopDance('Fehlgeschlagen');
+      $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${esc(r.data?.detail||t('error.analysis_failed'))}</p></div>`;
+      stopDance(t('error.analysis_failed'));
     }
   }catch(e){
     clearTimeout(timeoutWarn);
-    $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${e.message}</p></div>`;
-    stopDance('Fehler');
+    $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${esc(e.message)}</p></div>`;
+    stopDance(t('error.generic'));
+  }
+  $('result-content').style.display='block';
+  enableBtn(btn);
+}
+
+async function runMultiFileAnalysis(btn){
+  if(SESSION_FILES.length === 0){
+    showToast(t('error.no_file'),t('error.no_file.msg'),true);
+    enableBtn(btn);return;
+  }
+
+  const company = $('session-company').value.trim() || SESSION_FILES[0].name.replace('-INVESTOR-DOKUMENT.md','').replace('.md','').trim();
+
+  startDance(t('common.status') + ' wird vorbereitet...');
+
+  let timeoutWarn = setTimeout(()=>{
+    showToast(t('toast.timeout'),t('toast.timeout.session'),false);
+    startDance('DeepSeek analysiert...');
+  },45000);
+
+  try{
+    const sRes = await api('/v1/session/create', {
+      method:'POST', body:JSON.stringify({company, lang: outputLang})
+    });
+    if(!sRes.ok || !sRes.data?.session_id){
+      clearTimeout(timeoutWarn);
+      showToast(t('error.session_failed'),t('error.session_failed.msg'),true);
+      enableBtn(btn);return;
+    }
+    const sid = sRes.data.session_id;
+
+    let totalSize = 0;
+    for(const file of SESSION_FILES){
+      totalSize += file.content.length;
+      if(totalSize > 10*1024*1024){
+        showToast(t('error.too_large'),t('error.too_large.msg'),true);
+        enableBtn(btn);return;
+      }
+      const uRes = await api(`/v1/session/${sid}/documents`, {
+        method:'POST', body:JSON.stringify({name:file.name, content:file.content})
+      });
+      if(!uRes.ok){
+        clearTimeout(timeoutWarn);
+        showToast(t('error.upload_failed'),`${esc(file.name)}: ${t('error.generic')}`,true);
+        enableBtn(btn);return;
+      }
+    }
+
+    startDance('Alle ' + SESSION_FILES.length + ' Dokumente werden analysiert...');
+
+    const r = await api(`/v1/session/${sid}/analyze`, {method:'POST', body:JSON.stringify({lang: outputLang})});
+    clearTimeout(timeoutWarn);
+
+    if(r.ok && r.data?.status==='success'){
+      const d = r.data.data;
+      LAST_MEMO = d.memo;
+      renderStartupResult(d);
+      $('btn-pdf').disabled = false;
+      SESSION_FILES = [];
+      updateSessionDocList();
+      stopDance(d.memo.recommendation+' – '+d.memo.company_name);
+      await refreshSessionList();
+    }else{
+      $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${esc(r.data?.detail||t('error.analysis_failed'))}</p></div>`;
+      stopDance(t('error.analysis_failed'));
+    }
+  }catch(e){
+    clearTimeout(timeoutWarn);
+    $('result-content').innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${esc(e.message)}</p></div>`;
+    stopDance(t('error.generic'));
   }
   $('result-content').style.display='block';
   enableBtn(btn);
@@ -525,124 +763,240 @@ function renderStartupResult(d){
   const sevClass={HIGH:'risk-high',MEDIUM:'risk-medium',LOW:'risk-low',CRITICAL:'risk-critical'};
 
   const metrics=m.metrics||{};
+  const _k = (k) => t(k);
   const finItems = [
-    {l:'TAM', v:metrics.tam_eur ? '€'+(metrics.tam_eur/1e6).toFixed(0)+' Mio' : '-'},
-    {l:'SAM', v:metrics.sam_eur ? '€'+(metrics.sam_eur/1e6).toFixed(0)+' Mio' : '-'},
-    {l:'Pricing', v:metrics.pricing_tiers?.length ? metrics.pricing_tiers.map(t=>t.price_eur+'€').join('/') : '-'},
-    {l:'ARR Y1', v:metrics.projected_arr_year1 ? '€'+(metrics.projected_arr_year1/1e3).toFixed(0)+'K' : '-'},
-    {l:'MRR Y1', v:metrics.projected_mrr_year1 ? '€'+metrics.projected_mrr_year1.toFixed(0) : '-'},
-    {l:'CAC', v:metrics.cac_target ? '€'+metrics.cac_target.toFixed(0) : '-'},
-    {l:'LTV', v:metrics.ltv_target ? '€'+metrics.ltv_target.toFixed(0) : '-'},
-    {l:'LTV/CAC', v:metrics.ltv_cac_ratio ? metrics.ltv_cac_ratio.toFixed(1)+'x' : '-'},
-    {l:'Payback', v:metrics.payback_months ? metrics.payback_months.toFixed(1)+' Mon' : '-'},
-    {l:'Churn', v:metrics.churn_rate_monthly ? (metrics.churn_rate_monthly*100).toFixed(1)+'%' : '-'},
-    {l:'Kunden Y1', v:metrics.target_customers_year1 ? metrics.target_customers_year1 : '-'},
-    {l:'Funding', v:metrics.funding_ask_min ? '€'+(metrics.funding_ask_min/1e3).toFixed(0)+'K' : '-'},
+    {k:'metric.tam', v:metrics.tam_eur ? '€'+(metrics.tam_eur/1e6).toFixed(0)+' Mio' : '-'},
+    {k:'metric.sam', v:metrics.sam_eur ? '€'+(metrics.sam_eur/1e6).toFixed(0)+' Mio' : '-'},
+    {k:'metric.pricing', v:metrics.pricing_tiers?.length ? metrics.pricing_tiers.map(t=>t.price_eur+'€').join('/') : '-'},
+    {k:'metric.arr_y1', v:metrics.projected_arr_year1 ? '€'+(metrics.projected_arr_year1/1e3).toFixed(0)+'K' : '-'},
+    {k:'metric.mrr_y1', v:metrics.projected_mrr_year1 ? '€'+metrics.projected_mrr_year1.toFixed(0) : '-'},
+    {k:'metric.cac', v:metrics.cac_target ? '€'+metrics.cac_target.toFixed(0) : '-'},
+    {k:'metric.ltv', v:metrics.ltv_target ? '€'+metrics.ltv_target.toFixed(0) : '-'},
+    {k:'metric.ltv_cac', v:metrics.ltv_cac_ratio ? metrics.ltv_cac_ratio.toFixed(1)+'x' : '-'},
+    {k:'metric.payback', v:metrics.payback_months ? metrics.payback_months.toFixed(1)+' Mon' : '-'},
+    {k:'metric.churn', v:metrics.churn_rate_monthly ? (metrics.churn_rate_monthly*100).toFixed(1)+'%' : '-'},
+    {k:'metric.customers_y1', v:metrics.target_customers_year1 ? metrics.target_customers_year1 : '-'},
+    {k:'metric.funding', v:metrics.funding_ask_min ? '€'+(metrics.funding_ask_min/1e3).toFixed(0)+'K' : '-'},
   ];
+
+  const vm = m.visual_metrics || {};
+  const radar = vm.radar_scores || {};
+  const ue = vm.unit_economics || {};
+  const proj = vm.projections || {};
+  const scorecardTotal = vm.scorecard_total || 0;
+  const radarKeys = ['market','product','team','financials','competition','execution'];
+  const radarLabels = ['radar.market','radar.product','radar.team','radar.financials','radar.competition','radar.execution'];
+  const radarValues = radarKeys.map(k => radar[k] || 5);
+  const hasCharts = vm.scorecard_total != null;
+
+  const scorecardBars = hasCharts ? radarKeys.map((k,i) => {
+    const v = radarValues[i];
+    return `<div class="bar-row"><span class="bar-label">${_k(radarLabels[i])}</span><div class="bar-track"><div class="bar-fill" style="width:${v*10}%">${v}</div></div></div>`;
+  }).join('') : '';
+
+  const kpiItems = hasCharts ? [
+    {v: ue.ltv_cac_ratio ? ue.ltv_cac_ratio.toFixed(1)+'x' : '-', k: 'kpi.ltv_cac'},
+    {v: ue.payback_months ? ue.payback_months.toFixed(1)+' Mon' : '-', k: 'kpi.payback'},
+    {v: ue.gross_margin_pct ? ue.gross_margin_pct+'%' : '-', k: 'kpi.gross_margin'},
+    {v: proj.runway_months ? proj.runway_months.toFixed(1)+' Mon' : '-', k: 'kpi.runway'},
+    {v: proj.arr_year1 ? '€'+(proj.arr_year1/1e3).toFixed(0)+'K' : '-', k: 'metric.arr_y1'},
+    {v: proj.arr_year3 ? '€'+(proj.arr_year3/1e3).toFixed(0)+'K' : '-', k: 'kpi.arr_y3'},
+    {v: proj.cagr_pct != null ? proj.cagr_pct.toFixed(1)+'%' : '-', k: 'kpi.cagr'},
+    {v: proj.monthly_churn_pct != null ? (proj.monthly_churn_pct*100).toFixed(1)+'%' : '-', k: 'kpi.churn_monthly'},
+  ] : [];
+
+  const arrData = hasCharts ? [proj.arr_year1||0, proj.arr_year2||0, proj.arr_year3||0] : null;
+  const _t = t;
 
   $('result-content').innerHTML=`
     <div class="card">
       <div class="result-header">
-        <h2>${m.company_name||'?'}</h2>
-        <span class="badge ${recClass}">${m.recommendation||'N/A'}</span>
-        <span style="font-size:.9rem;color:var(--muted)">${(m.confidence_score*100).toFixed(0)}% Konfidenz</span>
-        <span style="font-size:.75rem;background:rgba(108,99,255,.15);color:var(--accent2);padding:2px 8px;border-radius:4px">Startup DD</span>
+        <h2>${esc(m.company_name||'?')}</h2>
+        <span class="badge ${recClass}">${esc(m.recommendation||'N/A')}</span>
+        <span style="font-size:.9rem;color:var(--muted)">${((m.confidence_score||0)*100).toFixed(0)}% ${_t('startup.confidence')}</span>
+        <span style="font-size:.75rem;background:rgba(108,99,255,.15);color:var(--accent2);padding:2px 8px;border-radius:4px">${_t('startup.label')}</span>
       </div>
 
       <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem">
-        ${m.sector||''} | ${m.stage||'Pre-Seed'} | ${m.location||'DACH'}
+        ${esc(m.sector||'')} | ${esc(m.stage||'Pre-Seed')} | ${esc(m.location||'DACH')}
       </div>
 
       <div class="metrics">
-        ${finItems.map(i=>`<div class="metric"><div class="val">${i.v}</div><div class="lbl">${i.l}</div></div>`).join('')}
+        ${finItems.map(i=>`<div class="metric"><div class="val">${esc(i.v)}</div><div class="lbl">${_k(i.k)}</div></div>`).join('')}
       </div>
 
-      <div class="thesis">${m.investment_thesis||'Keine Analyse.'}</div>
+      ${hasCharts ? `
+      <div style="margin-bottom:1rem;padding:12px;background:var(--bg);border-radius:8px">
+        <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:flex;justify-content:space-between">
+          <span>${_t('startup.scorecard')}</span>
+          <span style="font-weight:700;color:var(--accent);font-size:.9rem">${scorecardTotal}/100</span>
+        </div>
+        ${scorecardBars}
+      </div>
+
+      <div class="kpi-grid">
+        ${kpiItems.map(i=>`<div class="kpi"><div class="value">${esc(i.v)}</div><div class="label">${_k(i.k)}</div></div>`).join('')}
+      </div>
+
+      <div class="chart-grid">
+        <div style="background:var(--bg);border-radius:8px;padding:12px">
+          <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">${_t('chart.arr')}</div>
+          <div class="chart-container"><canvas id="arrChart-startup"></canvas></div>
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:12px">
+          <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">${_t('chart.radar')}</div>
+          <div class="chart-container"><canvas id="radarChart-startup"></canvas></div>
+        </div>
+      </div>
+      ` : ''}
+
+      <div class="thesis">${esc(m.investment_thesis||_t('startup.no_analysis'))}</div>
 
       ${m.market_dynamics ? `
       <div style="margin-bottom:1rem">
-        <div style="font-size:.8rem;color:var(--accent2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Marktdynamik</div>
-        <div style="font-size:.9rem;line-height:1.6;background:var(--bg);border-radius:8px;padding:12px">${m.market_dynamics}</div>
+        <div style="font-size:.8rem;color:var(--accent2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${_t('startup.market')}</div>
+        <div style="font-size:.9rem;line-height:1.6;background:var(--bg);border-radius:8px;padding:12px">${esc(m.market_dynamics)}</div>
       </div>` : ''}
 
       ${m.competitive_analysis ? `
       <div style="margin-bottom:1rem">
-        <div style="font-size:.8rem;color:var(--accent2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Wettbewerbsvorteil</div>
-        <div style="font-size:.9rem;line-height:1.6;background:var(--bg);border-radius:8px;padding:12px">${m.competitive_analysis}</div>
+        <div style="font-size:.8rem;color:var(--accent2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${_t('startup.competition')}</div>
+        <div style="font-size:.9rem;line-height:1.6;background:var(--bg);border-radius:8px;padding:12px">${esc(m.competitive_analysis)}</div>
       </div>` : ''}
 
       ${m.strategic_advice ? `
       <div style="margin-bottom:1rem;background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.15);border-radius:8px;padding:12px">
-        <div style="font-size:.8rem;color:var(--accent);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Strategische Empfehlung</div>
-        <div style="font-size:.9rem;line-height:1.6">${m.strategic_advice}</div>
+        <div style="font-size:.8rem;color:var(--accent);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">${_t('startup.strategic')}</div>
+        <div style="font-size:.9rem;line-height:1.6">${esc(m.strategic_advice)}</div>
       </div>` : ''}
 
       <div style="margin-bottom:1rem">
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Staerken</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${_t('startup.strengths')}</div>
         <ul style="padding-left:1.2rem;font-size:.9rem;line-height:1.8">
-          ${(m.key_strengths||[]).map(s=>`<li>${s}</li>`).join('')||'<li style="color:var(--muted)">Keine</li>'}
+          ${(m.key_strengths||[]).map(s=>`<li>${esc(s)}</li>`).join('')||'<li style="color:var(--muted)">'+_t('startup.none')+'</li>'}
         </ul>
       </div>
 
       <div style="margin-bottom:1rem">
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Risiken</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${_t('startup.risks')}</div>
         <div class="risks">
           ${(m.key_risks||[]).map(r=>`
-            <span class="risk-tag ${sevClass[r.severity]||'risk-medium'}" title="${r.description}">
-              ${r.severity}: ${r.category}
+            <span class="risk-tag ${sevClass[r.severity]||'risk-medium'}" title="${esc(r.description||'')}">
+              ${esc(r.severity||'')}: ${esc(r.category||'')}
             </span>
-          `).join('')||'<span style="color:var(--muted);font-size:.85rem">Keine identifiziert</span>'}
+          `).join('')||'<span style="color:var(--muted);font-size:.85rem">'+_t('startup.no_risks')+'</span>'}
         </div>
       </div>
 
       ${m.requested_documents?.length ? `
       <div style="margin-bottom:1rem;background:rgba(255,165,2,.05);border:1px solid rgba(255,165,2,.15);border-radius:8px;padding:12px">
-        <div style="font-size:.8rem;color:var(--warn);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Angeforderte Dokumente</div>
+        <div style="font-size:.8rem;color:var(--warn);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">${_t('startup.requested_docs')}</div>
         <ul style="padding-left:1.2rem;font-size:.85rem;line-height:1.7">
-          ${m.requested_documents.map(d=>`<li>${d}</li>`).join('')}
+          ${m.requested_documents.map(d=>`<li>${esc(d)}</li>`).join('')}
         </ul>
       </div>` : ''}
 
       ${m.critical_questions?.length ? `
       <div style="margin-bottom:1rem">
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Offene Fragen</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${_t('startup.open_questions')}</div>
         <ul style="padding-left:1.2rem;font-size:.85rem;line-height:1.7">
-          ${m.critical_questions.map(q=>`<li>${q}</li>`).join('')}
+          ${m.critical_questions.map(q=>`<li>${esc(q)}</li>`).join('')}
         </ul>
       </div>` : ''}
 
       <details>
-        <summary>Rohdaten (JSON)</summary>
-        <pre class="json">${JSON.stringify(m,null,2)}</pre>
+        <summary>${_t('startup.raw_data')}</summary>
+        <pre class="json">${escJson(m)}</pre>
       </details>
     </div>`;
+
+  if(hasCharts && arrData){
+    setTimeout(()=>{
+      const a=document.getElementById('arrChart-startup');
+      const r=document.getElementById('radarChart-startup');
+      if(a) new Chart(a,{type:'bar',data:{labels:['Y1','Y2','Y3'],datasets:[{label:'ARR (€)',data:arrData,backgroundColor:'#6c63ff',borderColor:'#00d4aa',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>'€'+(v/1000).toFixed(0)+'k'}}}}});
+      if(r) new Chart(r,{type:'radar',data:{labels:radarLabels,datasets:[{label:m.company_name||'Startup',data:radarValues,backgroundColor:'rgba(108,99,255,0.2)',borderColor:'#6c63ff',pointBackgroundColor:'#6c63ff',pointRadius:4}]},options:{responsive:true,maintainAspectRatio:false,scales:{r:{beginAtZero:true,max:10,grid:{color:'rgba(255,255,255,0.05)'},pointLabels:{color:'#8888aa'}}}}});
+    },50);
+  }
 }
 
 let UPLOADED_STARTUP_FILE = null;
 
 function handleStartupDrop(e){
-  e.preventDefault();$('dropzone').classList.remove('dragover');
+  e.preventDefault();$('dropzone-startup').classList.remove('dragover');
   const file=e.dataTransfer.files[0];if(file)setStartupFile(file);
 }
 function handleStartupFileSelect(e){
   const file=e.target.files[0];if(file)setStartupFile(file);
 }
 function setStartupFile(file){
-  if(!file.name.endsWith('.md')){showToast('Falsches Format','Nur .md Dateien.',true);return}
+  if(!file.name.endsWith('.md')){showToast(t('error.wrong_format'),t('error.wrong_format.msg'),true);return}
   UPLOADED_STARTUP_FILE=file;
   const name=file.name.replace('-INVESTOR-DOKUMENT.md','').replace('.md','').trim();
-  $('startup-file-name').textContent=file.name+' ('+(file.size/1024).toFixed(1)+' KB)';
+  $('startup-file-name').textContent=file.name+' ('+(file.size/1024).toFixed(1)+' '+t('common.kb')+')';
   if(name && !$('startup-name').value) $('startup-name').value=name;
-  showToast('Datei geladen',file.name);
+  showToast(t('upload.success'),file.name);
+}
+
+let SESSION_FILES = [];
+
+function handleMultiDrop(e){
+  e.preventDefault();$('dropzone-multi').classList.remove('dragover');
+  const files=e.dataTransfer.files;
+  for(let i=0;i<files.length;i++)addSessionFile(files[i]);
+}
+function handleMultiFileSelect(e){
+  const files=e.target.files;
+  for(let i=0;i<files.length;i++)addSessionFile(files[i]);
+  e.target.value='';
+}
+function updateSessionDocList(){
+  const list=$('session-doc-list');
+  const status=$('session-status');
+  if(SESSION_FILES.length===0){
+    list.innerHTML='';status.textContent=t('multi.no_files');
+    return;
+  }
+  list.innerHTML=SESSION_FILES.map((f,i)=>`
+    <div class="doc-item">
+      <span class="doc-name">${esc(f.name)}</span>
+      <span class="doc-size">${(f.size/1024).toFixed(1)} ${t('common.kb')}</span>
+      <button class="doc-remove" onclick="removeSessionFile(${i})" title="${t('common.delete')}">&times;</button>
+    </div>
+  `).join('');
+  const fileLabel = SESSION_FILES.length === 1 ? t('multi.doc') : t('documents');
+  status.innerHTML=`<span class="session-badge">${SESSION_FILES.length} ${fileLabel}</span> ${t('multi.ready')}`;
+}
+async function addSessionFile(file){
+  if(!file.name.endsWith('.md')){
+    showToast(t('error.wrong_format'),esc(file.name)+' '+t('error.wrong_format.msg'),true);
+    return;
+  }
+  if(file.size>10*1024*1024){
+    showToast(t('error.too_large'),esc(file.name)+' '+t('upload.error_too_large'),true);
+    return;
+  }
+  const content=await file.text();
+  const existing=SESSION_FILES.findIndex(f=>f.name===file.name);
+  if(existing>=0)SESSION_FILES.splice(existing,1);
+  SESSION_FILES.push({name:file.name,content,size:file.size});
+  updateSessionDocList();
+  showToast(t('multi.file_added'),file.name);
+}
+function removeSessionFile(index){
+  if(index<0||index>=SESSION_FILES.length)return;
+  const removed=SESSION_FILES.splice(index,1)[0];
+  updateSessionDocList();
+  showToast(t('multi.file_removed'),removed.name);
 }
 
 async function downloadPDF(){
-  if(!LAST_MEMO){showToast('Fehler','Keine Analyse zum Download.',true);return}
+  if(!LAST_MEMO){showToast(t('error.pdf_failed'),t('error.pdf_failed.msg'),true);return}
   if(!JWT){
     const tr=await api('/auth/token',{method:'POST'});
     if(!tr.ok)return;JWT=tr.data.access_token;
   }
-  const btn=$('btn-pdf');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> PDF...';
+  const btn=$('btn-pdf');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> ' + t('btn.pdf') + '...';
   try{
     const name=LAST_MEMO.company_name||'Investment';
     let r;
@@ -650,23 +1004,23 @@ async function downloadPDF(){
       const resp=await fetch(API+'/v1/report/startup-pdf',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+JWT},body:JSON.stringify({memo:LAST_MEMO})});
       r={ok:resp.ok,status:resp.status,blob:await resp.blob()};
     }else{
-      r=await api(`/v1/report/pdf?idea=Analyze+${encodeURIComponent(name)}`);
+      r=await api(`/v1/report/pdf?idea=Analyze+${encodeURIComponent(name)}&lang=${outputLang}`);
     }
     if(r.ok&&r.blob){
       const url=URL.createObjectURL(r.blob);
       const a=document.createElement('a');a.href=url;a.download=`${name.replace(/\s+/g,'_')}_memo.pdf`;a.click();
       URL.revokeObjectURL(url);
-      showToast('PDF erstellt',`${(r.blob.size/1024).toFixed(1)} KB – ${name}`);
-    }else showToast('Fehler',`HTTP ${r.status}`,true);
-  }catch(e){showToast('Fehler',e.message,true)}
-  btn.disabled=false;btn.innerHTML='&#128196; PDF';
+      showToast(t('btn.pdf'),`${(r.blob.size/1024).toFixed(1)} ${t('common.kb')} – ${esc(name)}`);
+    }else showToast(t('error.generic'),`HTTP ${r.status}`,true);
+  }catch(e){showToast(t('error.generic'),e.message,true)}
+  btn.disabled=false;btn.innerHTML='&#128196; ' + t('btn.pdf');
 }
 
 async function loadAudit(){
   const c=$('audit-content');
   if(!JWT){
     const tr=await api('/auth/token',{method:'POST'});
-    if(!tr.ok){showToast('Auth-Fehler','Token konnte nicht geholt werden.',true);return}
+    if(!tr.ok){showToast(t('toast.auth_error'),t('toast.auth_error.msg'),true);return}
     JWT=tr.data.access_token;
   }
   try{
@@ -674,19 +1028,19 @@ async function loadAudit(){
     if(r.ok){
       const entries=r.data.entries||[];
       if(entries.length===0){
-        c.innerHTML=`<div class="card"><p style="color:var(--muted);text-align:center">Keine Einträge im Audit-Log.</p></div>`;
+        c.innerHTML=`<div class="card"><p style="color:var(--muted);text-align:center">${t('audit.no_entries')}</p></div>`;
       }else{
-        c.innerHTML=`<div class="card"><h3 style="margin-bottom:1rem;font-size:1rem">Audit-Verlauf (${entries.length} Einträge)</h3>
+        c.innerHTML=`<div class="card"><h3 style="margin-bottom:1rem;font-size:1rem">${t('audit.title')} (${entries.length})</h3>
           ${entries.slice().reverse().map(e=>`
             <div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:.85rem">
-              <span style="color:var(--muted);font-size:.75rem">${e.timestamp?.slice(0,16)||''}</span><br>
-              <span style="font-weight:600">${e.idea?.slice(0,60)||'N/A'}</span>
-              <span style="float:right;color:var(--muted)">$${(e.cost_usd||0).toFixed(4)} | ${e.model_used||'-'}</span>
+              <span style="color:var(--muted);font-size:.75rem">${esc(e.timestamp?.slice(0,16)||'')}</span><br>
+              <span style="font-weight:600">${esc(e.idea?.slice(0,60)||'N/A')}</span>
+              <span style="float:right;color:var(--muted)">$${(e.cost_usd||0).toFixed(4)} | ${esc(e.model_used||'-')}</span>
             </div>
           `).join('')}</div>`;
       }
-    }else c.innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">Fehler beim Laden</p></div>`;
-  }catch(e){c.innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${e.message}</p></div>`}
+    }else c.innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${t('audit.error')}</p></div>`;
+  }catch(e){c.innerHTML=`<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">${esc(e.message)}</p></div>`}
   $('empty-state').style.display='none';
   $('result-content').style.display='none';
   $('audit-content').style.display='block';
@@ -701,23 +1055,152 @@ function switchTab(el){
   if(target) target.classList.add('active');
 }
 
+// ===== PERSISTENT SESSION HISTORY =====
+
+async function loadSessionHistory(){
+  const list = $('session-list');
+  const count = $('session-count');
+  const cached = localStorage.getItem('session_cache');
+  if(cached){
+    try{
+      const sessions = JSON.parse(cached);
+      renderSessionList(sessions);
+      if(count) count.textContent = sessions.length;
+    }catch(e){}
+  }else{
+    list.innerHTML = '<div class="session-empty">Keine gespeicherten Sessions.</div>';
+    if(count) count.textContent = '0';
+  }
+  if(!JWT){
+    const tr = await api('/auth/token', {method:'POST'});
+    if(!tr.ok) return;
+    JWT = tr.data.access_token;
+  }
+  try{
+    const r = await api('/v1/sessions');
+    if(r.ok && r.data?.sessions){
+      const sessions = r.data.sessions;
+      localStorage.setItem('session_cache', JSON.stringify(sessions));
+      renderSessionList(sessions);
+      if(count) count.textContent = sessions.length;
+    }
+  }catch(e){}
+}
+
+function renderSessionList(sessions){
+  const list = $('session-list');
+  if(!sessions || sessions.length === 0){
+    list.innerHTML = '<div class="session-empty">' + t('empty.sessions') + '</div>';
+    return;
+  }
+  list.innerHTML = sessions.map(s => {
+    const date = new Date(s.updated_at * 1000);
+    const dateStr = date.toLocaleDateString(currentLang === 'en' ? 'en-US' : currentLang === 'fr' ? 'fr-FR' : currentLang === 'tr' ? 'tr-TR' : currentLang === 'ar' ? 'ar-SA' : 'de-DE') + ' ' + date.toLocaleTimeString(currentLang === 'en' ? 'en-US' : currentLang === 'fr' ? 'fr-FR' : currentLang === 'tr' ? 'tr-TR' : currentLang === 'ar' ? 'ar-SA' : 'de-DE', {hour:'2-digit', minute:'2-digit'});
+    const docsLabel = s.document_count + ' ' + (s.document_count !== 1 ? t('documents') : t('multi.doc'));
+    const statusIcon = s.has_result ? '<span style="color:var(--ok)">&#10003;</span>' : '<span style="color:var(--warn)">&#9711;</span>';
+    const statusText = s.has_result ? t('session.analyzed') : t('session.waiting');
+    return `<div class="session-card" onclick="viewSessionResult('${s.id}')">
+      <button class="s-delete" onclick="event.stopPropagation();deleteSessionItem('${s.id}')" title="${esc(t('common.delete'))}">&times;</button>
+      <div class="s-top">
+        <span class="s-company">${esc(s.company_name || t('common.unbenannt'))}</span>
+        <span class="s-date">${dateStr}</span>
+      </div>
+      <div class="s-meta">
+        <span>${statusIcon} ${esc(s.status)}</span>
+        <span>&#128196; ${docsLabel}</span>
+        <span style="color:${s.has_result ? 'var(--accent)' : 'var(--muted)'}">${statusText}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function viewSessionResult(sessionId){
+  const btn = $('btn-analyze');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + t('btn.loading');
+  $('empty-state').style.display = 'none';
+  $('audit-content').style.display = 'none';
+  $('result-content').innerHTML = '';
+  if(!JWT){
+    const tr = await api('/auth/token', {method:'POST'});
+    if(!tr.ok){ showToast(t('toast.auth_error'),t('toast.auth_error.msg'),true); enableBtn(btn); return; }
+    JWT = tr.data.access_token;
+  }
+  try{
+    const r = await api('/v1/session/' + sessionId + '/result');
+    if(r.ok && r.data?.status === 'success'){
+      const d = r.data.data;
+      CURRENT_MODE = 'startup';
+      switchMode('startup');
+      LAST_MEMO = d.memo;
+      renderStartupResult(d);
+      $('btn-pdf').disabled = false;
+      $('result-content').style.display = 'block';
+    }else{
+      $('result-content').innerHTML = '<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">' + esc(r.data?.detail || t('error.generic')) + '</p></div>';
+      $('result-content').style.display = 'block';
+    }
+  }catch(e){
+    $('result-content').innerHTML = '<div class="card" style="border-color:var(--err)"><p style="color:var(--err)">' + esc(e.message) + '</p></div>';
+    $('result-content').style.display = 'block';
+  }
+  enableBtn(btn);
+}
+
+async function deleteSessionItem(sessionId){
+  if(!confirm(t('session.delete.confirm'))) return;
+  if(!JWT){
+    const tr = await api('/auth/token', {method:'POST'});
+    if(!tr.ok) return;
+    JWT = tr.data.access_token;
+  }
+  try{
+    const r = await api('/v1/session/' + sessionId, {method:'DELETE'});
+    if(r.ok){
+      showToast(t('session.deleted'),t('session.deleted.msg'));
+      await loadSessionHistory();
+    }else{
+      showToast(t('error.delete_failed'),t('error.delete_failed.msg'),true);
+    }
+  }catch(e){ showToast(t('error.generic'),e.message,true); }
+}
+
 function addHistory(company, action, cost){
-  const list=$('history-list');
-  const first=list.querySelector('.empty-state');
-  if(first)first.remove();
+  // Lightweight in-memory history for equity mode
+  const list = $('session-list');
+  const first = list.querySelector('.session-empty');
+  const now = new Date();
+  const locale = currentLang === 'en' ? 'en-US' : currentLang === 'fr' ? 'fr-FR' : currentLang === 'tr' ? 'tr-TR' : currentLang === 'ar' ? 'ar-SA' : 'de-DE';
+  const dateStr = now.toLocaleDateString(locale) + ' ' + now.toLocaleTimeString(locale, {hour:'2-digit', minute:'2-digit'});
+  const el = document.createElement('div');
+  el.className = 'session-card';
+  el.style.borderLeft = '3px solid var(--accent2)';
+  el.innerHTML = `<div class="s-top"><span class="s-company">${esc(company||t('common.unknown'))}</span><span class="s-date">${dateStr}</span></div>
+    <div class="s-meta"><span style="color:var(--accent)">&#9889; ${esc(action||'-')}</span><span>${cost ? '$'+cost.toFixed(4) : ''}</span></div>`;
+  el.onclick = ()=>{
+    $('idea-input').value = 'Analyze ' + (company||'');
+    runAnalysis();
+  };
+  if(first) first.remove();
+  list.insertBefore(el, list.firstChild);
+  while(list.children.length > 20) list.removeChild(list.lastChild);
+}
 
-  const div=document.createElement('div');div.className='history-item';
-  const now=new Date();
-  div.innerHTML=`
-    <div class="h-date">${now.toLocaleDateString('de-DE')} ${now.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</div>
-    <div class="h-company">${company||'Unbekannt'}</div>
-    <div class="h-action" style="color:var(--accent)">${action||'-'}</div>
-  `;
-  div.onclick=()=>{$('idea-input').value=`Analysiere ${company}`;runAnalysis()};
-  list.insertBefore(div,list.firstChild);
-
-  // Keep max 10
-  while(list.children.length>10)list.removeChild(list.lastChild);
+async function refreshSessionList(){
+  // Update cached list and re-render
+  if(!JWT){
+    const tr = await api('/auth/token', {method:'POST'});
+    if(!tr.ok) return;
+    JWT = tr.data.access_token;
+  }
+  try{
+    const r = await api('/v1/sessions');
+    if(r.ok && r.data?.sessions){
+      const sessions = r.data.sessions;
+      localStorage.setItem('session_cache', JSON.stringify(sessions));
+      renderSessionList(sessions);
+      if($('session-count')) $('session-count').textContent = sessions.length;
+    }
+  }catch(e){}
 }
 
 // Manual token re-fetch

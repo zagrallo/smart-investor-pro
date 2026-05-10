@@ -14,15 +14,15 @@ def extract_json(text: str) -> str:
 
 
 FIELD_ALIASES = {
-    "company_name": ["issuer", "company", "name", "ticker_name", "organization", "ticker"],
-    "recommended_action": ["recommendation", "action", "rating", "verdict", "signal"],
-    "confidence_score": ["confidence", "score", "conviction"],
-    "investment_thesis": ["thesis", "rationale", "investment_case", "brief"],
-    "market_opportunity": ["market", "opportunity", "tam", "market_size"],
-    "competitive_advantages": ["advantages", "moat", "edge", "strengths", "competitive_edge"],
-    "financial_highlights": ["financials", "metrics", "highlights", "financial_metrics", "key_metrics"],
-    "key_risks": ["risks", "risk_factors", "risk_assessment", "concerns", "threats"],
-    "sector": ["industry", "sector_industry", "segment"],
+    "company_name": ["issuer", "company", "name", "ticker_name", "organization", "ticker", "unternehmen", "firma"],
+    "recommended_action": ["recommendation", "action", "rating", "verdict", "signal", "empfehlung", "handlung"],
+    "confidence_score": ["confidence", "score", "conviction", "konfidenz", "vertrauen"],
+    "investment_thesis": ["thesis", "rationale", "investment_case", "brief", "these", "anlagethese"],
+    "market_opportunity": ["market", "opportunity", "tam", "market_size", "marktchance", "markt"],
+    "competitive_advantages": ["advantages", "moat", "edge", "strengths", "competitive_edge", "wettbewerbsvorteile", "staerken"],
+    "financial_highlights": ["financials", "metrics", "highlights", "financial_metrics", "key_metrics", "finanzkennzahlen"],
+    "key_risks": ["risks", "risk_factors", "risk_assessment", "concerns", "threats", "risiken"],
+    "sector": ["industry", "sector_industry", "segment", "branche"],
 }
 
 
@@ -42,11 +42,16 @@ def _remap_fields(data: dict) -> dict:
 
 
 def _remap_nested(data: dict) -> dict:
-    """Remap fields inside nested structures like key_risks. Also fix case mismatches (Medium→MEDIUM)."""
-    risk_aliases = {"category": ["type", "area", "risk_type", "name"],
-                    "severity": ["level", "risk_level", "priority"],
-                    "description": ["detail", "desc", "text", "explanation"],
-                    "mitigation": ["mitigate", "action", "countermeasure", "plan"]}
+    """Remap fields inside nested structures like key_risks. Fix German severity values."""
+    risk_aliases = {"category": ["type", "area", "risk_type", "name", "kategorie"],
+                    "description": ["detail", "desc", "text", "explanation", "beschreibung"],
+                    "mitigation": ["mitigate", "action", "countermeasure", "plan", "massnahme"]}
+    SEVERITY_MAP = {
+        "NIEDRIG": "LOW", "NIEDR": "LOW",
+        "MITTEL": "MEDIUM",
+        "HOCH": "HIGH",
+        "KRITISCH": "CRITICAL", "KRIT": "CRITICAL",
+    }
     risks = data.get("key_risks") or data.get("risks") or []
     if isinstance(risks, list):
         mapped_risks = []
@@ -56,8 +61,11 @@ def _remap_nested(data: dict) -> dict:
                     for alias in aliases:
                         if alias in r and canon not in r:
                             r[canon] = r.pop(alias)
-                if "severity" in r and isinstance(r["severity"], str):
-                    r["severity"] = r["severity"].upper()
+                # Normalize risk level values for both field name variants
+                for key in ("severity", "level"):
+                    if key in r and isinstance(r[key], str):
+                        val = r[key].upper()
+                        r[key] = SEVERITY_MAP.get(val, val)
                 mapped_risks.append(r)
         data["key_risks"] = mapped_risks
     return data

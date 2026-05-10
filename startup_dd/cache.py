@@ -67,7 +67,7 @@ class SmartCache:
             return True
         except Exception as e:
             logger.debug("Redis ping failed: %s", e)
-            self._redis = None
+            self._redis_ok = False
             return False
 
     async def get(self, key: str) -> Any | None:

@@ -7,6 +7,24 @@ from .startup_schema import StartupMetrics
 logger = logging.getLogger(__name__)
 
 
+def _parse_number(s: str) -> float:
+    """Parse locale-agnostic number string (handles DE/EN formats)."""
+    s = s.strip().replace(" ", "").replace("\xa0", "")
+    if not s:
+        return 0.0
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif "," in s:
+        parts = s.split(",")
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            s = s.replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif s.count(".") >= 2:
+        s = s.replace(".", "")
+    return float(s)
+
+
 class StartupDocumentParser:
     """Extrahiert strukturierte Daten aus Startup-Dokumenten mittels Regex + Heuristiken."""
 
@@ -24,7 +42,7 @@ class StartupDocumentParser:
                 else:
                     name, price = f"Tier {len(tiers)+1}", match
                 try:
-                    price_val = float(price.replace(".", "").replace(",", "."))
+                    price_val = _parse_number(price)
                     if 5 <= price_val <= 5000:
                         tiers.append({"plan": name.strip(), "price_eur": price_val})
                 except ValueError:
@@ -44,7 +62,7 @@ class StartupDocumentParser:
         for pattern, multiplier in patterns:
             m = re.search(pattern, content, re.I)
             if m:
-                val = float(m.group(1).replace(",", ""))
+                val = _parse_number(m.group(1))
                 key = "tam_eur" if "TAM" in m.group().upper() else \
                       "sam_eur" if "SAM" in m.group().upper() else "som_eur_year3"
                 if result[key] is None:
@@ -62,10 +80,10 @@ class StartupDocumentParser:
             m = re.search(pattern, content, re.I)
             if m:
                 if groups == 2:
-                    result["funding_ask_min"] = float(m.group(1).replace(".", ""))
-                    result["funding_ask_max"] = float(m.group(2).replace(".", ""))
+                    result["funding_ask_min"] = _parse_number(m.group(1))
+                    result["funding_ask_max"] = _parse_number(m.group(2))
                 else:
-                    val = float(m.group(1).replace(".", ""))
+                    val = _parse_number(m.group(1))
                     if result["funding_ask_min"] is None:
                         result["funding_ask_min"] = val * 0.8
                         result["funding_ask_max"] = val * 1.2
@@ -92,8 +110,8 @@ class StartupDocumentParser:
             m = re.search(pattern, content, re.I)
             if m:
                 try:
-                    val = float(m.group(1).replace(",", "."))
-                    if "payback" in key and "Wochen" in m.group() or "weeks" in m.group():
+                    val = _parse_number(m.group(1))
+                    if "payback" in key and ("Wochen" in m.group() or "weeks" in m.group()):
                         val = val / 4.33
                     if "churn" in key and val > 1:
                         val = val / 100

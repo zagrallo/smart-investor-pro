@@ -62,21 +62,26 @@ class MultiLLMRouter:
             }
 
         cache_key = hash_key(prompt, system_provider := self.default)
+        c = get_cache() if self.cache_enabled else None
         if self.cache_enabled:
-            cached_result, hit = await cached(cache_key, settings.REDIS_TTL_LLM, self._fetch, self.default, prompt, system_prompt, response_format)
-            if hit:
-                self._track_cost(session_id, cached_result.get("cost_usd", 0))
-                cached_result["cache_hit"] = True
-                return cached_result
+            cached_val = await c.get(cache_key)
+            if cached_val is not None:
+                self._track_cost(session_id, cached_val.get("cost_usd", 0))
+                cached_val["cache_hit"] = True
+                return cached_val
 
         if self.parallel and self.gemini:
-            return await self._analyze_parallel(prompt, system_prompt, response_format, session_id)
+            result = await self._analyze_parallel(prompt, system_prompt, response_format, session_id)
+            self._track_cost(session_id, result.get("cost_usd", 0))
+            if c and result.get("success"):
+                await c.set(cache_key, result, settings.REDIS_TTL_LLM)
+            return result
 
         result = await self._call_single(self.default, prompt, system_prompt, response_format)
         self._track_cost(session_id, result.get("cost_usd", 0))
 
-        if self.cache_enabled:
-            await get_cache().set(cache_key, result, settings.REDIS_TTL_LLM)
+        if c and result.get("success"):
+            await c.set(cache_key, result, settings.REDIS_TTL_LLM)
 
         if result.get("success") and self._confidence_ok(result):
             return result
@@ -111,10 +116,14 @@ class MultiLLMRouter:
         if self.gemini:
             tasks["gemini"] = self._call_single("gemini", prompt, system_prompt, response_format)
 
-        results = await asyncio.wait_for(
-            asyncio.gather(*tasks.values(), return_exceptions=True),
-            timeout=60.0,
-        )
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks.values(), return_exceptions=True),
+                timeout=60.0,
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            logger.error("Parallel analysis timed out after 60s")
+            return {"success": False, "error": "parallel_timeout", "cost_usd": self.session_costs.get(session_id or "", 0)}
         provider_results = {}
         for name, r in zip(tasks, results):
             if isinstance(r, Exception):
@@ -205,6 +214,7 @@ class MultiLLMRouter:
                 config=genai.types.GenerateContentConfig(
                     temperature=0.3,
                     max_output_tokens=4000,
+                    response_mime_type="application/json",
                 ),
             ),
             timeout=30.0,

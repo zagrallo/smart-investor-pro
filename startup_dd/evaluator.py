@@ -35,10 +35,12 @@ class StartupEvaluator:
         scores["market"] = 0.6 * tam_score + 0.4 * sam_score
         ltv_cac = metrics.ltv_cac_ratio or 0
         gross_margin = (metrics.gross_margin_target or 0) / 100
+        payback = metrics.payback_months
+        payback_score = max(0, min(1.0, 1 - (payback / 24))) if payback is not None else 0.5
         scores["business_model"] = (
             0.3 * min(1.0, ltv_cac / 10) +
             0.3 * min(1.0, gross_margin / 0.8) +
-            0.2 * min(1.0, (metrics.payback_months or 99) / 12) +
+            0.2 * payback_score +
             0.2 * min(1.0, (metrics.target_customers_year1 or 0) / 500)
         )
         scores["financials"] = 0.5 * min(1.0, (metrics.funding_ask_min or 0) / 500_000) + \

@@ -157,7 +157,7 @@ def _format_metrics(metrics: dict) -> list[str]:
         return ["No metrics available."]
     lines = []
     label_map = {
-        "tam_eur": "TAM", "sam_eur": "SAM", "som_year3_eur": "SOM (Year 3)",
+        "tam_eur": "TAM", "sam_eur": "SAM", "som_eur_year3": "SOM (Year 3)",
         "projected_arr_year1": "Projected ARR Year 1", "projected_arr_year3": "Projected ARR Year 3",
         "projected_mrr_year1": "Projected MRR Year 1",
         "target_customers_year1": "Target Customers Year 1", "target_customers_year3": "Target Customers Year 3",
@@ -213,7 +213,7 @@ def _format_scorecard(vm: dict, confidence: float) -> str:
     proj = vm.get("projections", {})
     lines = [f"<b>Gesamtscore:</b> {vm.get('scorecard_total', 0)}/100 (Confidence: {confidence:.0%})<br/><br/>"]
     for k, v in sorted(radar.items(), key=lambda x: -x[1]):
-        bar = "&#9632;" * int(v) + "&#9632;" * (10 - int(v)) if v <= 10 else "&#9632;" * 10
+        bar = "&#9632;" * int(v) + "&#9633;" * (10 - int(v)) if v <= 10 else "&#9632;" * 10
         lines.append(f"<b>{k.title()}:</b> {bar} {v}/10<br/>")
     lines.append(f"<br/><b>Unit Economics:</b><br/>")
     lines.append(f"&bull; LTV/CAC: {unit.get('ltv_cac_ratio', 'N/A')}:1<br/>")

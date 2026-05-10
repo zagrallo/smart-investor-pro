@@ -49,7 +49,7 @@ def _compute_radar(memo: dict, metrics: dict) -> dict:
     base["product"] = min(10.0, round(5 + len(strengths) * 0.6, 1))
 
     ltv_cac = metrics.get("ltv_cac_ratio") or 0
-    gm = metrics.get("gross_margin_target") or metrics.get("gross_margin_pct") or 0
+    gm = metrics.get("gross_margin_target") or 0
     base["financials"] = min(10.0, round(3 + (ltv_cac / 4) + (gm / 20), 1))
 
     base["competition"] = min(10.0, round(5 + len(strengths) * 0.4, 1))
@@ -74,7 +74,7 @@ def _compute_unit_economics(metrics: dict) -> dict:
     cac = metrics.get("cac_target") or 1
     ratio = round(ltv / cac, 1) if cac > 0 else 0
 
-    gm = metrics.get("gross_margin_target") or metrics.get("gross_margin_pct") or 0
+    gm = metrics.get("gross_margin_target") or 0
 
     payback = metrics.get("payback_months") or (metrics.get("payback_weeks", 0) / 4.33) if metrics.get("payback_weeks") else None
 
@@ -103,7 +103,7 @@ def _compute_projections(metrics: dict) -> dict:
     cagr = round(((arr_y3 / arr_y1) ** (1/2) - 1) * 100, 1) if arr_y1 > 0 and arr_y3 > 0 else None
 
     if burn > 0:
-        runway = round(funding / (burn * 12), 1) if funding > 0 else None
+        runway = round(funding / burn, 1) if funding > 0 else None
     else:
         runway = None
 

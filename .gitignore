@@ -37,3 +37,7 @@ htmlcov/
 
 # Logs
 *.log
+
+# Runtime data
+data/sessions/
+test_upload.md

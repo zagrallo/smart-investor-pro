@@ -1,5 +1,5 @@
 from .startup_schema import StartupInvestmentMemo, StartupStage, Recommendation, StartupMetrics, StartupRisk
-from .vc_prompt import VC_SYSTEM_PROMPT
+from .vc_prompt import get_vc_prompt
 from .document_parser import StartupDocumentParser
 from .evaluator import StartupEvaluator
 from .startup_agent import StartupAgent
@@ -10,7 +10,7 @@ from .dashboard_html import generate_dashboard
 
 __all__ = [
     "StartupInvestmentMemo", "StartupStage", "Recommendation",
-    "StartupMetrics", "StartupRisk", "VC_SYSTEM_PROMPT",
+    "StartupMetrics", "StartupRisk", "get_vc_prompt",
     "StartupDocumentParser", "StartupEvaluator", "StartupAgent",
     "MultiLLMRouter", "calculate_consensus", "compute_visuals",
     "generate_dashboard",

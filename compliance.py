@@ -66,10 +66,10 @@ class ComplianceEngine:
 
     TICKER_BLOCKLIST = {"GH", "GMBH", "UG", "SAAS", "KI", "DACH", "SME", "RTL", "SOM",
         "ARR", "MRR", "LTV", "CAC", "TAM", "SAM", "SOM", "PWA", "API",
-        "CRM", "ERP", "CRM", "CEO", "CTO", "CFO", "MVP", "B2B", "B2C",
-        "D2C", "ROI", "KPI", "SEO", "DSGVO", "GDPR", "MIFID", "GmbH",
+        "CRM", "ERP", "CEO", "CTO", "CFO", "MVP", "B2B", "B2C", "HTTP", "JSON",
+        "D2C", "ROI", "KPI", "SEO", "DSGVO", "GDPR", "MIFID", "GmbH", "GDP",
         "UG", "EV", "EBIT", "EBITDA", "USA", "EU", "UK", "SWOT", "AG",
-        "INC", "CORP", "LTD", "LLC", "GMBH", "WAIT", "CLV", "LTV"}
+        "INC", "CORP", "LTD", "LLC", "WAIT", "CLV", "LTV"}
 
     PRIVATE_KEYWORDS = [
         "pre-seed", "seed", "pre revenue", "pre-revenue",
@@ -80,7 +80,7 @@ class ComplianceEngine:
     def _is_private_company(self, text: str) -> bool:
         lower = text.lower()
         # GmbH/UG/AG im Text → Privatunternehmen (DACH)
-        if re.search(r'\b(gmbh|ug\b|ag\b|limited|llc|pte\.?\s*ltd)', lower):
+        if re.search(r'\b(gmbh|ug|ag|limited|llc|pte\.?\s*ltd)\b', lower):
             return True
         for kw in self.PRIVATE_KEYWORDS:
             if kw in lower:

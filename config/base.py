@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     MAX_REQUESTS_PER_MINUTE: int = 5
 
+    API_SECRET: str = ""
     REDIS_URL: str = ""
     REDIS_TTL_MARKET: int = 86400
     REDIS_TTL_LLM: int = 3600

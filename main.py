@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, Response, Request, APIRouter, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, Response, Request, APIRouter, UploadFile, File, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, HTMLResponse
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -17,7 +18,7 @@ import time
 import asyncio
 import uuid
 import uvicorn
-
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
@@ -36,7 +37,7 @@ class JsonFormatter(logging.Formatter):
 
 _handler = logging.StreamHandler()
 _handler.setFormatter(JsonFormatter())
-logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL), handlers=[_handler])
+logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper()), handlers=[_handler])
 logger = logging.getLogger(__name__)
 
 from contextlib import asynccontextmanager
@@ -45,6 +46,8 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     await compliance_engine.init_db()
+    if settings.SECRET_KEY == "change-me-in-prod-32chars-minimum!":
+        logger.warning("Default SECRET_KEY in use. Set SECRET_KEY in .env for production.")
     logger.info("Started", extra={"version": settings.VERSION, "mock": settings.USE_MOCK_DATA, "env": settings.APP_ENV, "cache_enabled": settings.CACHE_ENABLED})
     yield
     try:
@@ -57,6 +60,11 @@ async def lifespan(app_instance: FastAPI):
 
 
 app = FastAPI(title="Smart Investor Pro", version="0.2.0", lifespan=lifespan)
+
+import os as _os
+_locales_dir = _os.path.join(_os.path.dirname(__file__), "locales")
+if _os.path.exists(_locales_dir):
+    app.mount("/locales", StaticFiles(directory=_locales_dir), name="locales")
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,6 +90,7 @@ def reset_rate_limits():
     _request_log = {}
 
 _request_log: dict[str, dict] = {}
+_rate_limit_lock = asyncio.Lock()
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -109,22 +118,23 @@ def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)) ->
 async def rate_limit_middleware(request: Request, call_next):
     if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
         return await call_next(request)
-    client_ip = request.client.host
-    now = time.time()
-    tokens = _request_log.get(client_ip)
-    if tokens is None:
-        _request_log[client_ip] = {"tokens": settings.MAX_REQUESTS_PER_MINUTE - 1, "last_refill": now}
-        return await call_next(request)
-    elapsed = now - tokens["last_refill"]
-    tokens["tokens"] = min(settings.MAX_REQUESTS_PER_MINUTE, tokens["tokens"] + elapsed * (settings.MAX_REQUESTS_PER_MINUTE / 60))
-    tokens["last_refill"] = now
-    if tokens["tokens"] < 1:
-        wait = int((1 - tokens["tokens"]) * 60 / settings.MAX_REQUESTS_PER_MINUTE) + 1
-        return JSONResponse(
-            status_code=429,
-            content={"detail": f"Too many requests. Retry in {wait}s."}
-        )
-    tokens["tokens"] -= 1
+    async with _rate_limit_lock:
+        client_ip = request.client.host
+        now = time.time()
+        tokens = _request_log.get(client_ip)
+        if tokens is None:
+            _request_log[client_ip] = {"tokens": settings.MAX_REQUESTS_PER_MINUTE - 1, "last_refill": now}
+            return await call_next(request)
+        elapsed = now - tokens["last_refill"]
+        tokens["tokens"] = min(settings.MAX_REQUESTS_PER_MINUTE, tokens["tokens"] + elapsed * (settings.MAX_REQUESTS_PER_MINUTE / 60))
+        tokens["last_refill"] = now
+        if tokens["tokens"] < 1:
+            wait = int((1 - tokens["tokens"]) * 60 / settings.MAX_REQUESTS_PER_MINUTE) + 1
+            return JSONResponse(
+                status_code=429,
+                content={"detail": f"Too many requests. Retry in {wait}s."}
+            )
+        tokens["tokens"] -= 1
     return await call_next(request)
 
 
@@ -138,10 +148,12 @@ async def correlation_id_middleware(request: Request, call_next):
 
 class AnalyzeRequest(BaseModel):
     idea: str = "Analyze Tesla Inc. (TSLA) as a long-term investment opportunity."
+    lang: str = "de"
 
 class StartupAnalyzeRequest(BaseModel):
     company: str
     document: str
+    lang: str = "de"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -170,8 +182,14 @@ async def health():
     }
 
 
+class TokenRequest(BaseModel):
+    api_secret: str = ""
+
 @app.post("/auth/token", response_model=TokenResponse)
-async def login():
+async def login(req: TokenRequest = None):
+    api_secret = req.api_secret if req else ""
+    if settings.API_SECRET and api_secret != settings.API_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid API secret")
     token = create_access_token({"sub": "beta-investor-1", "role": "analyst"})
     return TokenResponse(access_token=token)
 
@@ -181,32 +199,38 @@ async def analyze_v1(
     request: AnalyzeRequest,
     user: dict = Depends(get_current_user)
 ):
-    logger.info("Analysis request", extra={"user": user["id"], "idea": request.idea[:80]})
-    result = await agent.run_analysis(request.idea, user["id"])
-    return {"status": "success", "data": result}
+    lang = request.lang or "de"
+    logger.info("Analysis request", extra={"user": user["id"], "lang": lang, "idea": request.idea[:80]})
+    result = await agent.run_analysis(request.idea, user["id"], lang=lang)
+    return {"status": "success", "data": result, "lang": lang}
 
 
 @v1.post("/upload")
 async def upload_analysis_v1(
     file: UploadFile = File(...),
+    lang: str = Form("de"),
     user: dict = Depends(get_current_user)
 ):
     if not file.filename or not file.filename.lower().endswith(".md"):
         raise HTTPException(400, "Nur .md Dateien werden unterstützt.")
-    content = (await file.read()).decode("utf-8", errors="replace")
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, f"Datei zu gross. Max {MAX_UPLOAD_SIZE//1024//1024}MB.")
+    content = raw.decode("utf-8", errors="replace")
     idea = f"Analysiere die folgende Markdown-Datei '{file.filename}':\n\n{content[:32000]}"
-    logger.info("Upload analysis", extra={"user": user["id"], "file": file.filename, "size": len(content)})
-    result = await agent.run_analysis(idea, user["id"])
-    return {"status": "success", "data": result, "file": file.filename}
+    logger.info("Upload analysis", extra={"user": user["id"], "lang": lang, "file": file.filename, "size": len(content)})
+    result = await agent.run_analysis(idea, user["id"], lang=lang)
+    return {"status": "success", "data": result, "file": file.filename, "lang": lang}
 
 @v1.get("/report/pdf")
 async def pdf_report_v1(
     idea: str = "Analyze Tesla Inc. (TSLA)",
+    lang: str = "de",
     user: dict = Depends(get_current_user)
 ):
-    logger.info("PDF report request", extra={"user": user["id"]})
+    logger.info("PDF report request", extra={"user": user["id"], "lang": lang})
     try:
-        result = await agent.run_analysis(idea, user["id"])
+        result = await agent.run_analysis(idea, user["id"], lang=lang)
         if not result or "memo" not in result:
             raise HTTPException(status_code=500, detail="Analysis returned no memo")
         pdf_bytes = await asyncio.to_thread(generate_pdf, result["memo"])
@@ -256,9 +280,14 @@ async def analyze_startup_v1(
     request: StartupAnalyzeRequest,
     user: dict = Depends(get_current_user)
 ):
-    logger.info("Startup DD request", extra={"user": user["id"], "company": request.company})
-    result = await startup_agent.analyze(request.company, request.document, session_id=user["id"])
-    return {"status": "success", "data": result, "mode": "startup_dd"}
+    lang = request.lang or "de"
+    logger.info("Startup DD request", extra={"user": user["id"], "company": request.company, "lang": lang})
+    result = await startup_agent.analyze(request.company, request.document, session_id=user["id"], lang=lang)
+    store = get_session_store()
+    sid = store.create_session(user["id"], request.company)
+    store.add_document(sid, "input", request.document)
+    store.save_result(sid, result)
+    return {"status": "success", "data": result, "session_id": sid, "mode": "startup_dd", "lang": lang}
 
 
 @v1.post("/upload/startup")
@@ -268,11 +297,186 @@ async def upload_startup_v1(
 ):
     if not file.filename or not file.filename.lower().endswith(".md"):
         raise HTTPException(400, "Nur .md Dateien werden unterstützt.")
-    content = (await file.read()).decode("utf-8", errors="replace")
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, f"Datei zu gross. Max {MAX_UPLOAD_SIZE//1024//1024}MB.")
+    content = raw.decode("utf-8", errors="replace")
     company_name = file.filename.replace("-INVESTOR-DOKUMENT.md", "").replace(".md", "").strip()
     logger.info("Startup DD upload", extra={"user": user["id"], "file": file.filename, "size": len(content)})
     result = await startup_agent.analyze(company_name, content, session_id=user["id"])
-    return {"status": "success", "data": result, "file": file.filename, "mode": "startup_dd"}
+    store = get_session_store()
+    sid = store.create_session(user["id"], company_name)
+    store.add_document(sid, file.filename, content)
+    store.save_result(sid, result)
+    return {"status": "success", "data": result, "session_id": sid, "file": file.filename, "mode": "startup_dd"}
+
+
+from startup_dd.session_store import get_session_store
+
+class CreateSessionRequest(BaseModel):
+    company: str = ""
+    lang: str = "de"
+
+class AddDocumentRequest(BaseModel):
+    name: str
+    content: str
+
+@v1.post("/session/create")
+async def session_create(
+    request: CreateSessionRequest,
+    user: dict = Depends(get_current_user)
+):
+    store = get_session_store()
+    session_id = store.create_session(user["id"], request.company)
+    return {"session_id": session_id, "company": request.company, "document_count": 0, "lang": request.lang}
+
+
+@v1.post("/session/{session_id}/documents")
+async def session_add_document(
+    session_id: str,
+    request: AddDocumentRequest,
+    user: dict = Depends(get_current_user)
+):
+    store = get_session_store()
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
+    if session.user_id != user["id"]:
+        raise HTTPException(403, "Diese Session gehoert einem anderen User.")
+    if not request.name or not request.content:
+        raise HTTPException(400, "Name und Content duerfen nicht leer sein.")
+    ok = store.add_document(session_id, request.name, request.content)
+    if not ok:
+        raise HTTPException(500, "Dokument konnte nicht hinzugefuegt werden.")
+    return store.to_dict(store.get_session(session_id))
+
+
+@v1.post("/session/{session_id}/upload")
+async def session_upload_document(
+    session_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    if not file.filename or not file.filename.lower().endswith(".md"):
+        raise HTTPException(400, "Nur .md Dateien werden unterstuetzt.")
+    store = get_session_store()
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
+    if session.user_id != user["id"]:
+        raise HTTPException(403, "Diese Session gehoert einem anderen User.")
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, f"Datei zu gross. Max {MAX_UPLOAD_SIZE//1024//1024}MB.")
+    content = raw.decode("utf-8", errors="replace")
+    name = file.filename
+    if not session.company_name:
+        guessed = name.replace("-INVESTOR-DOKUMENT.md", "").replace(".md", "").strip()
+        if guessed:
+            store.update_company_name(session_id, guessed)
+    ok = store.add_document(session_id, name, content)
+    if not ok:
+        raise HTTPException(500, "Dokument konnte nicht hinzugefuegt werden.")
+    return store.to_dict(store.get_session(session_id))
+
+
+@v1.get("/session/{session_id}")
+async def session_get(
+    session_id: str,
+    user: dict = Depends(get_current_user)
+):
+    store = get_session_store()
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
+    if session.user_id != user["id"]:
+        raise HTTPException(403, "Diese Session gehoert einem anderen User.")
+    return store.to_dict(session)
+
+
+@v1.delete("/session/{session_id}/documents/{index}")
+async def session_remove_document(
+    session_id: str, index: int,
+    user: dict = Depends(get_current_user)
+):
+    store = get_session_store()
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
+    if session.user_id != user["id"]:
+        raise HTTPException(403, "Diese Session gehoert einem anderen User.")
+    ok = store.remove_document(session_id, index)
+    if not ok:
+        raise HTTPException(400, "Ungueltiger Index.")
+    return store.to_dict(store.get_session(session_id))
+
+
+@v1.delete("/session/{session_id}")
+async def session_delete(
+    session_id: str,
+    user: dict = Depends(get_current_user)
+):
+    store = get_session_store()
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
+    if session.user_id != user["id"]:
+        raise HTTPException(403, "Diese Session gehoert einem anderen User.")
+    store.delete_session(session_id)
+    return {"status": "session_deleted"}
+
+
+@v1.post("/session/{session_id}/analyze")
+async def session_analyze(
+    session_id: str,
+    request: Request,
+    user: dict = Depends(get_current_user)
+):
+    body = await request.json() if request.headers.get("content-type","").startswith("application/json") else {}
+    lang = body.get("lang", "de") if isinstance(body, dict) else "de"
+
+    store = get_session_store()
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session nicht gefunden oder abgelaufen.")
+    if session.user_id != user["id"]:
+        raise HTTPException(403, "Diese Session gehoert einem anderen User.")
+    if not session.documents:
+        raise HTTPException(400, "Keine Dokumente in der Session. Bitte zuerst Dokumente hochladen.")
+
+    company = session.company_name or session.documents[0].name.replace("-INVESTOR-DOKUMENT.md", "").replace(".md", "").strip()
+    logger.info("Session analyze", extra={"session_id": session_id, "company": company, "doc_count": len(session.documents), "lang": lang})
+
+    documents = [{"name": d.name, "content": d.content} for d in session.documents]
+    result = await startup_agent.analyze_multi(company, documents, session_id=user["id"], lang=lang)
+
+    store.save_result(session_id, result)
+    return {"status": "success", "data": result, "mode": "startup_dd_session", "session_id": session_id, "lang": lang}
+
+
+@v1.get("/sessions")
+async def sessions_list(
+    user: dict = Depends(get_current_user)
+):
+    store = get_session_store()
+    sessions = store.list_sessions(user["id"])
+    return {"sessions": sessions, "total": len(sessions)}
+
+
+@v1.get("/session/{session_id}/result")
+async def session_get_result(
+    session_id: str,
+    user: dict = Depends(get_current_user)
+):
+    store = get_session_store()
+    session = store.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session nicht gefunden.")
+    if session.user_id != user["id"]:
+        raise HTTPException(403, "Diese Session gehoert einem anderen User.")
+    if not session.result:
+        raise HTTPException(404, "Kein Ergebnis in dieser Session (noch nicht analysiert).")
+    return {"status": "success", "data": session.result, "mode": "startup_dd_session", "session_id": session_id}
 
 
 @v1.post("/cache/clear")
